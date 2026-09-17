@@ -1,20 +1,12 @@
----
-board: m5stack-stopwatch
-day: 12
-title: Couch to 5K
-toolchain: Arduino ESP32 3.3.10 + M5Unified 0.2.19 + M5GFX 0.2.26
-firmware: /firmware/day-12-c25k.bin
-summary: "27 workouts. Two buttons. One big countdown."
-verification: "Device checks + 125-second timing check"
----
+# E25K — ESP to 5K
 
-## The assignment
+An offline Couch-to-5K interval trainer for the M5Stack StopWatch C152.
+27 workouts. Two buttons. One big countdown.
 
-Build a Couch-to-5K interval trainer for the M5Stack StopWatch.
 Choose a workout, press both buttons, and follow the countdown through warm-up, running, walking, and cool-down.
 The whole nine-week program lives on the device.
 
-The [project plan](https://github.com/chantastic/esptember/blob/main/days/day-12-c25k/SPEC.md) is the source of truth for workout behavior, controls, and saved data.
+The [project plan](SPEC.md) is the source of truth for workout behavior, controls, and saved data.
 It includes the current decisions and the checks still open.
 
 The design starts with a glance: what am I doing, and how much longer?
@@ -22,9 +14,11 @@ RUN is coral.
 WALK is aqua.
 The countdown gets 122-pixel digits.
 
-![The installed C25K firmware showing a thirty-minute run segment](https://esptember.com/images/day-12-c25k/run.png)
+![The installed C25K firmware showing a thirty-minute run segment](images/run.png)
 
-This is a standalone build for day 12.
+E25K began as [ESPtember day 12](https://esptember.com/day/day-12-c25k/).
+This repository contains the standalone firmware and its development history.
+The source was extracted from [the verified Day 12 build](https://github.com/chantastic/esptember/tree/5edfd18/days/day-12-c25k), preserving its five development commits.
 It measures time and saves completed sessions locally.
 It uses neither distance nor GPS, and needs no account or network connection.
 
@@ -100,14 +94,14 @@ Each workout shows its total time and a preview of the run/walk sequence before 
 Read the activities left to right, then top to bottom; matching sequences show how many rounds to repeat.
 W1 D1 is eight rounds of a one-minute run and a ninety-second walk, with a five-minute warm-up and five-minute cool-down, for thirty minutes total.
 
-![W1 D1 showing eight rounds of running and walking, with warm-up, cool-down, and total duration](https://esptember.com/images/day-12-c25k/workout-summary.png)
+![W1 D1 showing eight rounds of running and walking, with warm-up, cool-down, and total duration](images/workout-summary.png)
 
 During a workout, the outer arc shows your position in the whole session and the inner ring shows progress through the current segment.
 Colored circles reveal the run/walk pattern and fill as each countdown finishes.
 Skipping leaves a segment outlined; replay keeps its completion, with the thick current outline showing until you move on.
 Blue and Yellow still work while paused, and leave the timer paused.
 
-![Paused countdown on the StopWatch](https://esptember.com/images/day-12-c25k/paused.png)
+![Paused countdown on the StopWatch](images/paused.png)
 
 Hold both to open cancel confirmation, release, then hold both again to discard the session.
 The timer keeps running underneath unless already paused.
@@ -117,7 +111,7 @@ Any other input dismisses the overlay; it also disappears after five seconds.
 
 All 27 workouts include a five-minute warm-up and five-minute cool-down.
 The program starts with one-minute runs and reaches a thirty-minute run in week nine.
-The complete interval table is in the [design spec](https://github.com/chantastic/esptember/blob/main/days/day-12-c25k/SPEC.md).
+The complete interval table is in the [design spec](SPEC.md).
 
 A completed session saves its workout, date, active duration, and time spent running.
 Skipping forward marks it partial with `~`, including skipping past the final segment.
@@ -128,7 +122,7 @@ Every completion moves the cursor to the workout after the one just finished.
 Repeat W2 D1 while the cursor is on week five, and your next-up workout becomes W2 D2.
 W9 D3 stays at the end and shows Program complete.
 
-![Home showing one full completion and one partial completion of W1 D1](https://esptember.com/images/day-12-c25k/history-counts.png)
+![Home showing one full completion and one partial completion of W1 D1](images/history-counts.png)
 
 History keeps the newest 256 sessions, including repeats.
 Hold both on Home for Settings: Sound, Vibration, Set Time, Reset Progress, and About.
@@ -143,7 +137,7 @@ Set Time steps through hour, minute, and confirmation.
 It preserves the RTC date; an unset clock uses the build date shown on confirmation.
 This build converts local RTC time using Pacific time rules.
 An unset RTC produces `--` in History and still allows workouts.
-The [build guide](https://github.com/chantastic/esptember/blob/main/days/day-12-c25k/BUILD.md) covers setting the full date and changing the timezone.
+The [build guide](BUILD.md) covers setting the full date and changing the timezone.
 
 ## Count the time you spend
 
@@ -190,9 +184,11 @@ Physical button feel, audible/haptic cues, and daylight readability still need a
 
 ## Build and change it
 
-From a clone of [the ESPtember repository](https://github.com/chantastic/esptember), install the tested dependencies:
+Clone E25K, then install the tested dependencies:
 
 ```sh
+git clone https://github.com/chantastic/E25K.git
+cd E25K
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli lib install --no-deps "M5Unified@0.2.19" "M5GFX@0.2.26"
@@ -201,14 +197,14 @@ arduino-cli lib install --no-deps "M5Unified@0.2.19" "M5GFX@0.2.26"
 Run from the repository root, replacing `PORT` with the StopWatch's port:
 
 ```sh
-days/day-12-c25k/scripts/test.sh
-days/day-12-c25k/scripts/flash.sh PORT
+scripts/test.sh
+scripts/flash.sh PORT
 ```
 
 The host tests use macOS `clang++` with address and undefined-behavior sanitizers.
 The flash script builds and uploads individual components using 16 MB flash, OPI PSRAM, and the existing `app3M_fat9M_16MB` partition layout.
 With that layout already installed, it preserves saved C25K history.
-The merged download is produced at `days/day-12-c25k/.build/firmware/c25k.ino.merged.bin`.
+The merged download is produced at `.build/firmware/c25k.ino.merged.bin`.
 
 Change the program in `workouts.h`, the four-gesture grammar in `buttons.h`, and the drawing in `ui.h`.
 The ten-second warning follows the Sound and Vibration toggles.

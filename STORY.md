@@ -1,6 +1,6 @@
----
-title: Couch to 5K
----
+# Building E25K
+
+Originally published as [ESPtember day 12](https://esptember.com/day/day-12-c25k/story/).
 
 This day took a detour from putting pictures on a screen.
 The assignment was a Couch-to-5K trainer for the M5Stack StopWatch: 27 workouts, two buttons, and a countdown you could read while moving.
@@ -35,7 +35,7 @@ Those checks establish the rules; a run with the device in hand will establish h
 The useful information fits in two lines: RUN and 30:00.
 Everything else supports them.
 
-![Thirty-minute run countdown captured from the device](https://esptember.com/images/day-12-c25k/run.png)
+![Thirty-minute run countdown captured from the device](images/run.png)
 
 The countdown uses vector numerals with a true 122-pixel height.
 Even 30:00 fits inside the roughly 330-pixel square inscribed in the round display.

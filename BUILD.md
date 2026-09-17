@@ -1,9 +1,9 @@
-# Day 12: Couch to 5K on the M5Stack StopWatch
+# E25K build and verification guide
 
 A standalone, offline interval trainer for the M5Stack StopWatch C152.
 The [project plan](SPEC.md) is the source of truth for behavior, all 27 workouts, and the saved-data contract.
 This guide covers operating, building, and verifying its implementation.
-The firmware is installed on the connected device.
+The recorded hardware checks below were performed on September 12, 2026.
 
 ## Use it
 
@@ -84,14 +84,14 @@ M5Unified already includes the StopWatch's M5IOE1 vibration support; a separate 
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli lib install --no-deps "M5Unified@0.2.19" "M5GFX@0.2.26"
-cd ~/Developer/esptember
-days/day-12-c25k/scripts/build.sh
+cd /path/to/E25K
+scripts/build.sh
 arduino-cli board list
-days/day-12-c25k/scripts/flash.sh /dev/cu.usbmodem1101
+scripts/flash.sh /dev/cu.usbmodem1101
 ```
 
 Replace the port with the connected StopWatch's port if it changes.
-The scripts use the verified ESP32-S3 configuration from `~/Developer/m5stack-stopwatch-authkit`: 16 MiB flash, OPI PSRAM, hardware USB CDC, and `app3M_fat9M_16MB` partitions.
+The scripts use the ESP32-S3 configuration verified with the [earlier StopWatch project](https://github.com/chantastic/m5stack-stopwatch-authkit): 16 MiB flash, OPI PSRAM, hardware USB CDC, and `app3M_fat9M_16MB` partitions.
 The ambiguous USB board name is not the build target.
 
 Use `flash.sh` for component uploads that preserve NVS and filesystem partitions.
@@ -140,8 +140,8 @@ A power loss discards the in-progress session.
 Run the portable checks:
 
 ```sh
-cd ~/Developer/esptember
-days/day-12-c25k/scripts/test.sh
+cd /path/to/E25K
+scripts/test.sh
 ```
 
 These compile the production helpers with address and undefined-behavior sanitizers.
@@ -164,10 +164,10 @@ These accelerated checks do not measure real-time clock drift or physical button
 The repeatable connected-device check is:
 
 ```sh
-cd ~/Developer/esptember
-python3 -m venv days/day-12-c25k/.build/venv
-days/day-12-c25k/.build/venv/bin/pip install pyserial pillow
-days/day-12-c25k/.build/venv/bin/python days/day-12-c25k/scripts/check-device.py /dev/cu.usbmodem1101
+cd /path/to/E25K
+python3 -m venv .build/venv
+.build/venv/bin/pip install pyserial pillow
+.build/venv/bin/python scripts/check-device.py /dev/cu.usbmodem1101
 ```
 
 It checks every workout through natural completion using accelerated time, captures all screens, tests running/paused navigation and cancel behavior, and verifies the RTC.

@@ -1,4 +1,4 @@
-# C25K for M5Stack StopWatch — Design Spec
+# E25K (ESP to 5K) for M5Stack StopWatch — Design Spec
 
 Version 1.2 · 2026-09-12
 
@@ -7,7 +7,7 @@ Change this document alongside any agreed behavior or storage change, then keep 
 An implementation mismatch belongs in §14 until resolved; it does not silently redefine the requirement.
 
 The [original version 1.0](spec-history/v1.0.md) is preserved unchanged.
-[BUILD.md](BUILD.md) covers operating and building the device, [README.md](README.md) is the published guide, and [STORY.md](STORY.md) records how it was built.
+[BUILD.md](BUILD.md) covers operating and building the device, [README.md](README.md) is the project guide, and [STORY.md](STORY.md) records how it was built.
 Those documents support this plan.
 The document revision is separate from the firmware version shown in About.
 
