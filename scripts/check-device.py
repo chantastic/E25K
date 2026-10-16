@@ -105,6 +105,13 @@ class Device:
             try:
                 self.serial = serial.Serial(self.port, 115200, timeout=0.5, write_timeout=2)
                 state = self.status()
+                # Startup emits its own status before it handles our probe.
+                # Drain that second response before the next state-changing
+                # command, otherwise assertions can read a one-command-old state.
+                quiet_deadline = time.monotonic() + 2
+                while time.monotonic() < quiet_deadline and self.serial.readline():
+                    pass
+                state = self.status()
                 self.initial_inputs = state["inputs"]
                 return state
             except (OSError, serial.SerialException, RuntimeError):

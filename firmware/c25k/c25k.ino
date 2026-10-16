@@ -151,6 +151,7 @@ void beginSetTime() {
 }
 
 void handleInput(Input input) {
+  if (!displayReady) return;
   if (input == Input::None) return;
   const uint32_t now = appNow();
   session.update(now); drainSessionEvents();
@@ -297,14 +298,15 @@ const char* screenName() {
 }
 
 void reportStatus() {
-  Serial.printf("C25K_STATUS screen=%s page=%u cursor=%u workout=%u segment=%u remaining=%lu total_ms=%llu run_ms=%llu paused=%u partial=%u logs=%u sound=%u vibration=%u storage=%u rtc=%lu test=%u inputs=%lu loop_max_us=%lu psram=%u width=%d height=%d speaker=%u store=%s segments_done=%lu\n",
+  Serial.printf("C25K_STATUS screen=%s page=%u cursor=%u workout=%u segment=%u remaining=%lu total_ms=%llu run_ms=%llu paused=%u partial=%u logs=%u sound=%u vibration=%u storage=%u rtc=%lu test=%u inputs=%lu loop_max_us=%lu psram=%u width=%d height=%d speaker=%u store=%s segments_done=%lu ui=lvgl ui_ready=%u ui_flushes=%lu ui_pixels=%llu ui_mem_free=%u heap=%u\n",
     screenName(), homePage, progress.cursor, session.workoutIndex, session.segmentIndex,
     (unsigned long)session.remainingMs(), (unsigned long long)session.totalElapsedMs,
     (unsigned long long)session.runElapsedMs, session.paused, session.partial, progress.count,
     progress.sound_on, progress.vib_on, storageOk, (unsigned long)rtcTimestamp(), diagnostic,
     (unsigned long)physicalInputs, (unsigned long)maxLoopUs, ESP.getPsramSize(),
     M5.Display.width(), M5.Display.height(), feedback.speakerReady, C25K_STORAGE_NAMESPACE,
-    (unsigned long)session.completedSegments);
+    (unsigned long)session.completedSegments, displayReady, (unsigned long)ui.flushes(),
+    (unsigned long long)ui.pixels(), unsigned(ui.freeBytes()), ESP.getFreeHeap());
 }
 
 void startCapture() {
@@ -398,9 +400,17 @@ void setup() {
   M5.Display.setRotation(0); M5.Display.setBrightness(255);
   setenv("TZ", C25K_TIMEZONE, 1); tzset();
   loadProgress(); feedback.begin(); applyFeedbackSettings();
-  ui.begin(); displayReady = true;  // Ui has a direct-display allocation fallback.
+  displayReady = ui.begin();
+  if (!displayReady) {
+    M5.Display.fillScreen(0);
+    M5.Display.setTextColor(0xFFFFFF);
+    M5.Display.setTextSize(2);
+    M5.Display.setCursor(60,200);
+    M5.Display.println("Display init failed");
+    Serial.println("C25K_UI_ERROR");
+  }
   home(); render();
-  Serial.println("C25K_READY version=1.0.0"); reportStatus();
+  Serial.println("C25K_READY version=1.1.0 renderer=lvgl-9.3.0"); reportStatus();
 }
 
 void loop() {
@@ -420,6 +430,7 @@ void loop() {
     screen = Screen::Workout; dirty = true;
   }
   feedback.update(millis());
+  ui.service();
   readCommands(); updateCapture();
   if (dirty || ((screen == Screen::Workout || screen == Screen::CancelConfirm) &&
                 !session.paused && uint32_t(millis() - lastDraw) >= 100)) render();

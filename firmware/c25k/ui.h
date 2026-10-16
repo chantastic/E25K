@@ -1,6 +1,8 @@
 #pragma once
 
-#include <M5Unified.h>
+#include "lvgl_scene.h"
+
+LV_FONT_DECLARE(e25k_timer_font);
 #include <math.h>
 #include "workouts.h"
 #include "workout_summary.h"
@@ -34,17 +36,19 @@ class Ui {
   bool begin() {
     _cx = M5.Display.width() / 2;
     _cy = M5.Display.height() / 2;
-    _canvas.setColorDepth(16);
-    _canvas.setPsram(true);
-    _ready = _canvas.createSprite(M5.Display.width(), M5.Display.height()) != nullptr;
-    // A failed PSRAM allocation still leaves an operable, directly drawn UI.
-    surface().setTextWrap(false, false);
-    surface().fillScreen(BLACK);
-    return _ready;
+    return _scene.begin();
   }
 
   void draw(const UiView& v) {
-    surface().fillScreen(BLACK);
+    if (!_scene.ready()) return;
+    // Only structural changes rebuild the tree. Timer ticks update retained
+    // labels/arcs; they do not allocate a new screen or redraw every pixel.
+    const uint32_t layout = uint32_t(v.screen) | uint32_t(v.homePage) << 4 |
+      uint32_t(v.settingsPage) << 9 | uint32_t(v.timeField) << 12 |
+      uint32_t(v.historyPage) << 14 | uint32_t(v.segmentIndex) << 22 |
+      uint32_t(v.resetSucceeded) << 27 | uint32_t(v.historyCount == 0) << 28 |
+      uint32_t(v.homePage == v.cursor) << 29 | uint32_t(v.programComplete) << 30;
+    _scene.beginFrame(layout);
     switch (v.screen) {
       case Screen::Home: home(v); break;
       case Screen::Workout: workout(v); break;
@@ -56,11 +60,16 @@ class Ui {
       case Screen::ResetConfirm: resetConfirm(v); break;
       case Screen::ResetResult: resetResult(v); break;
     }
+    _scene.endFrame();
   }
 
-  void push() { if (_ready) _canvas.pushSprite(0, 0); }
-  M5Canvas& canvas() { return _canvas; }
-  bool buffered() const { return _ready; }
+  void push() { _scene.refresh(); }
+  void service() { _scene.service(); }
+  M5Canvas& canvas() { return _scene.canvas(); }
+  bool buffered() const { return _scene.ready(); }
+  uint32_t flushes() const { return _scene.flushes(); }
+  uint64_t pixels() const { return _scene.pixels(); }
+  size_t freeBytes() const { return _scene.freeBytes(); }
 
  private:
   static constexpr uint32_t BLACK = 0x000000;
@@ -71,23 +80,14 @@ class Ui {
   static constexpr uint32_t TRACK = 0x24272B;
   static constexpr uint32_t RUN = 0xFF765E;
   static constexpr uint32_t WALK = 0x52D9CB;
-  M5Canvas _canvas{&M5.Display};
-  bool _ready = false;
+  LvglScene _scene;
   int _cx = 234, _cy = 234;
 
-  lgfx::LGFXBase& surface() {
-    if (_ready) return _canvas;
-    return M5.Display;
-  }
+  LvglScene& surface() { return _scene; }
 
-  void text(const char* str, int y, const lgfx::IFont* font,
+  void text(const char* str, int y, const lv_font_t* font,
             uint32_t color = WHITE, int dx = 0) {
-    auto& g = surface();
-    g.setFont(font);
-    g.setTextSize(1);
-    g.setTextColor(color, BLACK);
-    g.setTextDatum(lgfx::textdatum_t::middle_center);
-    g.drawString(str ? str : "", _cx + dx, y);
+    _scene.text(str, _cx + dx, y, font, color);
   }
 
   static void duration(char* dst, size_t n, uint32_t seconds) {
@@ -113,14 +113,12 @@ class Ui {
     return "";
   }
 
-  void smallHint(const char* hint) { text(hint, 364, &fonts::DejaVu18, MUTED); }
+  void smallHint(const char* hint) { text(hint, 364, &lv_font_montserrat_18, MUTED); }
 
   void check(int x, int y, uint32_t color, int scale = 1) {
     auto& g = surface();
-    for (int i = 0; i < 3 * scale; ++i) {
-      g.drawLine(x - 9 * scale, y + i, x - 2 * scale, y + 7 * scale + i, color);
-      g.drawLine(x - 2 * scale, y + 7 * scale + i, x + 12 * scale, y - 8 * scale + i, color);
-    }
+    g.drawLine(x - 9 * scale, y, x - 2 * scale, y + 7 * scale, color, 3 * scale);
+    g.drawLine(x - 2 * scale, y + 7 * scale, x + 12 * scale, y - 8 * scale, color, 3 * scale);
   }
 
   void arcDots(unsigned count, int current, uint32_t completed = 0,
@@ -169,63 +167,12 @@ class Ui {
   }
 
   void ring(int radius, int thickness, float progress, uint32_t color) {
-    auto& g = surface();
-    g.fillArc(_cx, _cy, radius, radius - thickness, 0, 360, TRACK);
-    if (progress <= 0) return;
-    if (progress > 1) progress = 1;
-    g.fillArc(_cx, _cy, radius, radius - thickness, -90, -90 + progress * 360, color);
-  }
-
-  // Vector numerals have a true 122 px glyph height, independent of font metrics.
-  // Their chamfered strokes remain crisp on the AMOLED at running distance.
-  void digit(int value, int x, int y, int w, int h, uint32_t color) {
-    static constexpr uint8_t masks[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66,
-                                        0x6D, 0x7D, 0x07, 0x7F, 0x6F};
-    uint8_t mask = masks[value % 10];
-    const int t = 13, mid = h / 2;
-    auto& g = surface();
-    auto horizontal = [&](int yy) {
-      g.fillRect(x + t, yy, w - 2 * t, t, color);
-      g.fillTriangle(x + t, yy, x + t, yy + t - 1, x + t / 2, yy + t / 2, color);
-      g.fillTriangle(x + w - t - 1, yy, x + w - t - 1, yy + t - 1,
-                     x + w - t / 2 - 1, yy + t / 2, color);
-    };
-    auto vertical = [&](int xx, int yy) {
-      const int length = mid - t;
-      g.fillRect(xx, yy + t / 2, t, length - t, color);
-      g.fillTriangle(xx, yy + t / 2, xx + t - 1, yy + t / 2,
-                     xx + t / 2, yy, color);
-      g.fillTriangle(xx, yy + length - t / 2 - 1,
-                     xx + t - 1, yy + length - t / 2 - 1,
-                     xx + t / 2, yy + length - 1, color);
-    };
-    if (mask & 0x01) horizontal(y);
-    if (mask & 0x02) vertical(x + w - t, y + t);
-    if (mask & 0x04) vertical(x + w - t, y + mid + t / 2);
-    if (mask & 0x08) horizontal(y + h - t);
-    if (mask & 0x10) vertical(x, y + mid + t / 2);
-    if (mask & 0x20) vertical(x, y + t);
-    if (mask & 0x40) horizontal(y + mid - t / 2);
+    _scene.ring(_cx, _cy, radius, thickness, progress, color, TRACK);
   }
 
   void countdown(uint32_t seconds, uint32_t color) {
-    char value[12];
-    duration(value, sizeof(value), seconds);
-    const int len = strlen(value);
-    const int digitWidth = len > 4 ? 64 : 75;
-    const int colonWidth = 18, gap = 9, height = 122, top = 159;
-    const int width = (len - 1) * digitWidth + colonWidth + (len - 1) * gap;
-    int x = _cx - width / 2;
-    for (int i = 0; i < len; ++i) {
-      if (value[i] == ':') {
-        surface().fillCircle(x + colonWidth / 2, top + 40, 6, color);
-        surface().fillCircle(x + colonWidth / 2, top + 82, 6, color);
-        x += colonWidth + gap;
-      } else {
-        digit(value[i] - '0', x, top, digitWidth, height, color);
-        x += digitWidth + gap;
-      }
-    }
+    char value[12]; duration(value, sizeof(value), seconds);
+    text(value, 220, &e25k_timer_font, color);
   }
 
   void activitySummary(const Workout& plan) {
@@ -237,13 +184,13 @@ class Ui {
       snprintf(label, sizeof(label), "CONTINUOUS RUN");
     else
       snprintf(label, sizeof(label), "%u INTERVALS", unsigned(summary.coreCount));
-    text(label, 232, &fonts::DejaVu12, MUTED);
+    text(label, 232, &lv_font_montserrat_14, MUTED);
 
     // Two large activities for a repeated pair; longer sequences flow across
     // at most three rows. Every token comes from the same table as the timer.
     const unsigned perRow = summary.patternCount <= 4 ? 2 : 3;
     const unsigned rows = (summary.patternCount + perRow - 1) / perRow;
-    const lgfx::IFont* font = summary.patternCount <= 2 ? &fonts::DejaVu24 : &fonts::DejaVu18;
+    const lv_font_t* font = summary.patternCount <= 2 ? &lv_font_montserrat_24 : &lv_font_montserrat_18;
     auto& g = surface();
     for (unsigned row = 0; row < rows; ++row) {
       char tokens[3][24]{};
@@ -251,13 +198,12 @@ class Ui {
       unsigned first = row * perRow;
       unsigned count = summary.patternCount - first;
       if (count > perRow) count = perRow;
-      g.setFont(font); g.setTextSize(1);
       for (unsigned i = 0; i < count; ++i) {
         const Segment& segment = plan.segments[summary.firstCore + first + i];
         char time[12]; duration(time, sizeof(time), segment.seconds);
         snprintf(tokens[i], sizeof(tokens[i]), "%s %s",
                  segment.type == SegmentType::Run ? "RUN" : "WALK", time);
-        widths[i] = g.textWidth(tokens[i]); width += widths[i];
+        widths[i] = LvglScene::textWidth(tokens[i], font); width += widths[i];
       }
       constexpr int gap = 18;
       width += (count - 1) * gap;
@@ -277,30 +223,30 @@ class Ui {
     duration(warmup, sizeof(warmup), summary.warmupSeconds);
     duration(cooldown, sizeof(cooldown), summary.cooldownSeconds);
     snprintf(label, sizeof(label), "%s WARM UP + %s COOL DOWN", warmup, cooldown);
-    text(label, 327, &fonts::DejaVu12, MUTED);
+    text(label, 327, &lv_font_montserrat_14, MUTED);
   }
 
   void home(const UiView& v) {
     text(!v.storageOk ? "STORAGE UNAVAILABLE" : v.programComplete ? "PROGRAM COMPLETE" : "COUCH TO 5K",
-         v.homePage >= 27 ? 92 : 82, &fonts::DejaVu12, MUTED);
+         v.homePage >= 27 ? 92 : 82, &lv_font_montserrat_14, MUTED);
     if (v.homePage >= 27) {
       historyIcon(174);
-      text("History", 250, &fonts::DejaVu40);
+      text("History", 250, &lv_font_montserrat_40);
       char count[40];
       snprintf(count, sizeof(count), "%u saved %s", unsigned(v.historyCount),
                v.historyCount == 1 ? "session" : "sessions");
-      text(count, 300, &fonts::DejaVu18, MUTED);
+      text(count, 300, &lv_font_montserrat_18, MUTED);
       smallHint("BOTH TO OPEN");
     } else {
       char label[24], time[16], count[48];
       workoutLabel(label, sizeof(label), v.homePage);
-      text(label, 132, &fonts::DejaVu56);
+      text(label, 132, &lv_font_montserrat_48);
       if (!v.programComplete && v.homePage == v.cursor) {
         surface().fillTriangle(_cx - 5, 175, _cx + 5, 175, _cx, 168, WHITE);
       }
       duration(time, sizeof(time), totalSeconds(workoutAt(v.homePage)));
       snprintf(label, sizeof(label), "%s total", time);
-      text(label, 199, &fonts::DejaVu24);
+      text(label, 199, &lv_font_montserrat_24);
       activitySummary(workoutAt(v.homePage));
       if (v.completionCount || v.partialCount) {
         if (v.completionCount && v.partialCount) {
@@ -313,11 +259,11 @@ class Ui {
           snprintf(count, sizeof(count), "%u %s", unsigned(v.completionCount),
                    v.completionCount == 1 ? "completion" : "completions");
         }
-        text(count, 349, &fonts::DejaVu12, MUTED);
+        text(count, 349, &lv_font_montserrat_14, MUTED);
         if (v.lastDateText && *v.lastDateText)
-          text(v.lastDateText, 367, &fonts::DejaVu12, DIM);
+          text(v.lastDateText, 367, &lv_font_montserrat_14, DIM);
       }
-      text("BOTH TO START", 389, &fonts::DejaVu18, MUTED);
+      text("BOTH TO START", 389, &lv_font_montserrat_18, MUTED);
     }
     arcDots(28, v.programComplete ? -1 : v.cursor, v.completedWorkouts, nullptr, v.homePage);
   }
@@ -329,15 +275,15 @@ class Ui {
     uint32_t accent = segmentColor(type);
     ring(225, 3, v.sessionProgress, WHITE);
     ring(213, 9, v.segmentProgress, v.paused ? DIM : accent);
-    text(v.paused ? "PAUSED" : segmentLabel(type), 111, &fonts::DejaVu40,
+    text(v.paused ? "PAUSED" : segmentLabel(type), 111, &lv_font_montserrat_40,
          v.paused ? MUTED : accent);
     countdown(v.remainingSec, v.paused ? PAUSED : WHITE);
     char line[48], time[16];
     snprintf(line, sizeof(line), "Seg %u/%u", unsigned(index + 1), unsigned(plan.count));
-    text(line, 320, &fonts::DejaVu18, MUTED);
+    text(line, 320, &lv_font_montserrat_18, MUTED);
     duration(time, sizeof(time), v.elapsedSec);
     snprintf(line, sizeof(line), "%s elapsed", time);
-    text(line, 350, &fonts::DejaVu18, MUTED);
+    text(line, 350, &lv_font_montserrat_18, MUTED);
     arcDots(plan.count, index, v.completedSegments, &plan);
   }
 
@@ -345,32 +291,27 @@ class Ui {
     auto& g = surface();
     g.fillRoundRect(_cx - 163, 137, 326, 194, 22, BLACK);
     g.drawRoundRect(_cx - 163, 137, 326, 194, 22, DIM);
-    text("Cancel workout?", 184, &fonts::DejaVu24);
-    text("Hold both again", 235, &fonts::DejaVu18);
-    text("to confirm", 262, &fonts::DejaVu18);
-    text("Any press to keep going", 304, &fonts::DejaVu12, MUTED);
+    text("Cancel workout?", 184, &lv_font_montserrat_24);
+    text("Hold both again", 235, &lv_font_montserrat_18);
+    text("to confirm", 262, &lv_font_montserrat_18);
+    text("Any press to keep going", 304, &lv_font_montserrat_14, MUTED);
   }
 
   void metric(const char* label, uint32_t seconds, int y, int dx) {
     char time[16];
     duration(time, sizeof(time), seconds);
-    auto& g = surface();
-    g.setFont(&fonts::DejaVu40);
-    g.setTextSize(1);
-    int width = g.textWidth(time);
-    g.setTextSize(width > 148 ? 148.0f / width : 1.0f);
-    g.setTextColor(WHITE, BLACK);
-    g.setTextDatum(lgfx::textdatum_t::middle_center);
-    g.drawString(time, _cx + dx, y);
-    text(label, y + 32, &fonts::DejaVu12, MUTED, dx);
+    const lv_font_t* font = LvglScene::textWidth(time, &lv_font_montserrat_40) > 148
+      ? &lv_font_montserrat_32 : &lv_font_montserrat_40;
+    text(time, y, font, WHITE, dx);
+    text(label, y + 32, &lv_font_montserrat_14, MUTED, dx);
   }
 
   void complete(const UiView& v) {
     check(_cx, 96, WHITE, 2);
-    text(v.partial ? "DONE ~" : "DONE", 162, &fonts::DejaVu56);
+    text(v.partial ? "DONE ~" : "DONE", 162, &lv_font_montserrat_48);
     char label[16];
     workoutLabel(label, sizeof(label), v.workoutIndex);
-    text(label, 225, &fonts::DejaVu24, MUTED);
+    text(label, 225, &lv_font_montserrat_24, MUTED);
     metric("TOTAL TIME", v.elapsedSec, 284, -81);
     metric("RUN TIME", v.runSec, 284, 81);
     smallHint(v.storageOk ? "BOTH TO CONTINUE" : "LOG COULD NOT BE SAVED");
@@ -386,70 +327,66 @@ class Ui {
   }
 
   void history(const UiView& v) {
-    text("HISTORY", 89, &fonts::DejaVu18, MUTED);
+    text("HISTORY", 89, &lv_font_montserrat_18, MUTED);
     if (!v.historyCount) {
       historyIcon(174);
-      text("No runs yet", 253, &fonts::DejaVu24);
-      text("Your first one starts here.", 295, &fonts::DejaVu18, MUTED);
+      text("No runs yet", 253, &lv_font_montserrat_24);
+      text("Your first one starts here.", 295, &lv_font_montserrat_18, MUTED);
       smallHint("HOLD BOTH TO GO BACK");
       return;
     }
     char label[24];
     workoutLabel(label, sizeof(label), v.workoutIndex);
-    text(label, 151, &fonts::DejaVu40);
-    text(v.dateText && *v.dateText ? v.dateText : "--", 205, &fonts::DejaVu18, MUTED);
+    text(label, 151, &lv_font_montserrat_40);
+    text(v.dateText && *v.dateText ? v.dateText : "--", 205, &lv_font_montserrat_18, MUTED);
     if (v.partial) {
       surface().drawRoundRect(_cx - 50, 230, 100, 25, 12, DIM);
-      text("PARTIAL", 243, &fonts::DejaVu12, MUTED);
+      text("PARTIAL", 243, &lv_font_montserrat_14, MUTED);
     }
     metric("TOTAL TIME", v.elapsedSec, 285, -81);
     metric("RUN TIME", v.runSec, 285, 81);
     snprintf(label, sizeof(label), "%u of %u", unsigned(v.historyPage + 1), unsigned(v.historyCount));
-    text(label, 362, &fonts::DejaVu18, MUTED);
+    text(label, 362, &lv_font_montserrat_18, MUTED);
     arcDots(v.historyCount, v.historyPage);
   }
 
-  void toggle(bool on, int y) {
-    auto& g = surface();
-    g.fillRoundRect(_cx - 52, y - 25, 104, 50, 25, on ? WHITE : TRACK);
-    g.fillCircle(_cx + (on ? 27 : -27), y, 18, on ? BLACK : MUTED);
-  }
+  void toggle(bool on, int y) { _scene.toggle(on, _cx, y, WHITE, TRACK, MUTED); }
 
   void settings(const UiView& v) {
-    text("SETTINGS", 94, &fonts::DejaVu18, MUTED);
+    text("SETTINGS", 94, &lv_font_montserrat_18, MUTED);
     switch (v.settingsPage) {
       case 0:
       case 1: {
         bool on = v.settingsPage == 0 ? v.soundOn : v.vibOn;
         toggle(on, 177);
-        text(v.settingsPage == 0 ? "Sound" : "Vibration", 247, &fonts::DejaVu40);
-        text(on ? "On" : "Off", 303, &fonts::DejaVu24, MUTED);
+        text(v.settingsPage == 0 ? "Sound" : "Vibration", 247, &lv_font_montserrat_40);
+        text(on ? "On" : "Off", 303, &lv_font_montserrat_24, MUTED);
         smallHint("BOTH TO TOGGLE");
         break;
       }
       case 2: {
         historyIcon(175);
-        text("Set Time", 246, &fonts::DejaVu40);
+        text("Set Time", 246, &lv_font_montserrat_40);
         char value[16];
         snprintf(value, sizeof(value), "%02u:%02u", unsigned(v.hour), unsigned(v.minute));
-        text(v.rtcValid ? value : "Clock not set", 302, &fonts::DejaVu24, MUTED);
+        text(v.rtcValid ? value : "Clock not set", 302, &lv_font_montserrat_24, MUTED);
         smallHint("BOTH TO EDIT");
         break;
       }
       case 3:
-        text("Reset", 187, &fonts::DejaVu40);
-        text("Progress", 241, &fonts::DejaVu40);
-        text("Start the program over", 302, &fonts::DejaVu18, MUTED);
+        text("Reset", 187, &lv_font_montserrat_40);
+        text("Progress", 241, &lv_font_montserrat_40);
+        text("Start the program over", 302, &lv_font_montserrat_18, MUTED);
         smallHint("BOTH TO OPEN");
         break;
       default: {
-        text("C25K", 176, &fonts::DejaVu56);
-        text("Version 1.0", 239, &fonts::DejaVu18, MUTED);
-        text(__DATE__, 269, &fonts::DejaVu18, MUTED);
+        text("E25K", 176, &lv_font_montserrat_48);
+        text("Version 1.1 / LVGL", 239, &lv_font_montserrat_18, MUTED);
+        text(__DATE__, 269, &lv_font_montserrat_18, MUTED);
         char label[32];
         if (v.battery < 0) snprintf(label, sizeof(label), "Battery --");
         else snprintf(label, sizeof(label), "Battery %d%%", v.battery);
-        text(label, 316, &fonts::DejaVu18, MUTED);
+        text(label, 316, &lv_font_montserrat_18, MUTED);
         smallHint("HOLD BOTH TO GO HOME");
         break;
       }
@@ -458,52 +395,52 @@ class Ui {
   }
 
   void setTime(const UiView& v) {
-    text("SET TIME", 94, &fonts::DejaVu18, MUTED);
+    text("SET TIME", 94, &lv_font_montserrat_18, MUTED);
     text(v.timeField == 0 ? "Hour" : v.timeField == 1 ? "Minute" : "Save this time?",
-         152, &fonts::DejaVu24);
+         152, &lv_font_montserrat_24);
     char hours[4], minutes[4];
     snprintf(hours, sizeof(hours), "%02u", unsigned(v.hour));
     snprintf(minutes, sizeof(minutes), "%02u", unsigned(v.minute));
-    text(hours, 232, &fonts::DejaVu72, v.timeField == 1 ? DIM : WHITE, -76);
-    text(":", 228, &fonts::DejaVu56, MUTED);
-    text(minutes, 232, &fonts::DejaVu72, v.timeField == 0 ? DIM : WHITE, 76);
+    text(hours, 232, &lv_font_montserrat_48, v.timeField == 1 ? DIM : WHITE, -76);
+    text(":", 228, &lv_font_montserrat_48, MUTED);
+    text(minutes, 232, &lv_font_montserrat_48, v.timeField == 0 ? DIM : WHITE, 76);
     if (v.timeField < 2) {
       int x = _cx + (v.timeField == 0 ? -76 : 76);
       surface().fillRoundRect(x - 43, 278, 86, 3, 1, WHITE);
-      text("YELLOW -     BLUE +", 313, &fonts::DejaVu18, MUTED);
+      text("YELLOW -     BLUE +", 313, &lv_font_montserrat_18, MUTED);
     } else if (v.dateText && *v.dateText) {
-      text(v.dateText, 313, &fonts::DejaVu18, MUTED);
+      text(v.dateText, 313, &lv_font_montserrat_18, MUTED);
     }
     smallHint(v.timeField < 2 ? "BOTH FOR NEXT" : "BOTH TO SAVE");
     arcDots(3, v.timeField);
   }
 
   void resetConfirm(const UiView& v) {
-    text("RESET PROGRESS", 102, &fonts::DejaVu18, MUTED);
-    text("Start over?", 176, &fonts::DejaVu40);
+    text("RESET PROGRESS", 102, &lv_font_montserrat_18, MUTED);
+    text("Start over?", 176, &lv_font_montserrat_40);
     char label[48];
     snprintf(label, sizeof(label), "Clear %u saved %s", unsigned(v.historyCount),
              v.historyCount == 1 ? "session" : "sessions");
-    text(label, 241, &fonts::DejaVu18);
-    text("Return to W1 D1", 270, &fonts::DejaVu18);
-    text("Hold both to cancel", 310, &fonts::DejaVu18, MUTED);
-    text("PRESS BOTH + RELEASE", 354, &fonts::DejaVu18);
-    text("TO RESET", 380, &fonts::DejaVu12, MUTED);
+    text(label, 241, &lv_font_montserrat_18);
+    text("Return to W1 D1", 270, &lv_font_montserrat_18);
+    text("Hold both to cancel", 310, &lv_font_montserrat_18, MUTED);
+    text("PRESS BOTH + RELEASE", 354, &lv_font_montserrat_18);
+    text("TO RESET", 380, &lv_font_montserrat_14, MUTED);
   }
 
   void resetResult(const UiView& v) {
-    text("RESET PROGRESS", 94, &fonts::DejaVu18, MUTED);
+    text("RESET PROGRESS", 94, &lv_font_montserrat_18, MUTED);
     if (v.resetSucceeded) {
       check(_cx, 157, WALK, 2);
-      text("History cleared", 230, &fonts::DejaVu24);
-      text("W1 D1 is next", 276, &fonts::DejaVu24);
-      text("Sound and vibration kept", 318, &fonts::DejaVu12, MUTED);
+      text("History cleared", 230, &lv_font_montserrat_24);
+      text("W1 D1 is next", 276, &lv_font_montserrat_24);
+      text("Sound and vibration kept", 318, &lv_font_montserrat_14, MUTED);
       smallHint("BOTH TO GO HOME");
     } else {
-      text("Reset not confirmed", 181, &fonts::DejaVu24);
-      text("Could not verify the save.", 239, &fonts::DejaVu18);
-      text("Please try again.", 275, &fonts::DejaVu24);
-      text("Hold both to go back", 321, &fonts::DejaVu18, MUTED);
+      text("Reset not confirmed", 181, &lv_font_montserrat_24);
+      text("Could not verify the save.", 239, &lv_font_montserrat_18);
+      text("Please try again.", 275, &lv_font_montserrat_24);
+      text("Hold both to go back", 321, &lv_font_montserrat_18, MUTED);
       smallHint("BOTH TO RETRY");
     }
   }

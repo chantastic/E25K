@@ -77,13 +77,13 @@ There is no Wi-Fi or NTP connection.
 
 ## Build and install
 
-The tested toolchain is Arduino CLI 1.5.1, Espressif ESP32 core 3.3.10, M5Unified 0.2.19, and M5GFX 0.2.26.
+The tested toolchain is Arduino CLI 1.5.1, Espressif ESP32 core 3.3.10, M5Unified 0.2.19, M5GFX 0.2.26, and LVGL 9.3.0.
 M5Unified already includes the StopWatch's M5IOE1 vibration support; a separate M5IOE1 library is unnecessary.
 
 ```sh
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-arduino-cli lib install --no-deps "M5Unified@0.2.19" "M5GFX@0.2.26"
+arduino-cli lib install --no-deps "M5Unified@0.2.19" "M5GFX@0.2.26" "lvgl@9.3.0"
 cd /path/to/E25K
 scripts/build.sh
 arduino-cli board list
@@ -109,7 +109,10 @@ The isolated source is in `firmware/c25k/`:
 | `buttons.h` | Exclusive Enter/Escape recognition and click swallowing |
 | `progress.h` | Packed completion log, ring order, schema, checksum, cursor |
 | `feedback.h` | Nonblocking vibration and speaker patterns |
-| `ui.h` | Round display layouts and vector countdown numerals |
+| `ui.h` | Round page layouts and anti-aliased typography |
+| `lvgl_scene.h` | Retained LVGL widgets and partial display transfers |
+| `lv_conf.h` | LVGL configuration, fonts, and memory budget |
+| `e25k_timer_font.c` | Generated 4-bit tabular countdown font |
 
 The additional portable headers keep the timing, button, and storage rules directly testable without an ESP32.
 This folder does not depend on the badge application's source or backend.
@@ -190,7 +193,7 @@ Physical button feel, audible/haptic perception, outdoor readability, and batter
 
 ## Design choices
 
-The active timer uses 122-pixel vector digits, a large segment label, one outer session arc, one inner segment ring, and colored segment dots.
+The active timer uses a 122-pixel anti-aliased Roboto Condensed glyph line, a large segment label, one outer session arc, one inner segment ring, and colored segment dots.
 RUN uses coral and WALK uses aqua against true black.
 Paused digits remain dimmer while retaining contrast.
 The layout follows [Garmin's emphasis on prominent, centered information](https://developer.garmin.com/connect-iq/user-experience-guidelines/incorporating-the-visual-design-and-product-personalities/) and [Wear OS guidance for large countdown numerals](https://developer.android.com/design/ui/wear/guides/styles/typography/apply).
@@ -200,3 +203,18 @@ Long histories show a moving window of dots and an explicit entry number.
 The fixed rotation is for handheld stopwatch use, with the loop below the display.
 
 The published [day 12 guide](https://esptember.com/day/day-12-c25k/) and [build story](https://esptember.com/day/day-12-c25k/story/) introduce this firmware.
+
+## LVGL integration
+
+LVGL 9.3.0 owns rendering; M5Unified/M5GFX continue to drive the physical hardware.
+`scripts/build.sh` passes the local `lv_conf.h` include path to C and C++ compilation, including library sources.
+Do not copy configuration into the global Arduino library directory.
+
+The renderer retains widgets during each page and updates only changed properties.
+LVGL uses a 96 KiB allocator pool and a 24-row RGB565 render buffer (22,464 bytes) in internal memory.
+A 438,048-byte PSRAM framebuffer mirrors completed display transfers for USB screenshots.
+The display callback transfers RGB565 with explicit pixel types to avoid byte-order errors.
+
+The main loop calls the LVGL timer handler; the workout timer still runs separately from `millis()`.
+USB status adds `ui`, `ui_ready`, `ui_flushes`, `ui_pixels`, and `heap` for verification.
+The custom countdown font is committed as C; [font provenance](assets/fonts/README.md) includes its license and regeneration command.

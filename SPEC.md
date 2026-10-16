@@ -1,6 +1,6 @@
 # E25K (ESP to 5K) for M5Stack StopWatch — Design Spec
 
-Version 1.2 · 2026-09-12
+Version 1.3 · 2026-09-20
 
 This is the project's source of truth for product behavior, the workout program, and saved data.
 Change this document alongside any agreed behavior or storage change, then keep the firmware, tests, and guides consistent with it.
@@ -345,8 +345,19 @@ New segment/state cues replace an unfinished cue; acknowledgement taps do not in
 - True black background, with coral **`#FF765E`** for RUN and aqua **`#52D9CB`** for WALK. Use those colors consistently in summaries, segment labels, rings, and dots; other text is white or grey.
 - Center layouts within the actual 468×468 drawing surface and circular aperture. Keep important content at least about 20 px from the circle edge; only progress rings approach the rim. The inscribed square is a guide, not an absolute text boundary.
 - Page changes are immediate. Horizontal slide animation is omitted to preserve time for button polling.
-- Countdown numerals have a **122 px** glyph height. They must remain legible at arm's length; daylight readability remains an in-hand acceptance check.
+- Countdown numerals use a **122 px** glyph line with tabular advances, rendered from a 4-bit Roboto Condensed font. Supporting text uses LVGL's 4-bit Montserrat fonts at 14, 18, 24, 32, 40, and 48 px. Text, circles, and arcs must use anti-aliasing. Daylight readability remains an in-hand acceptance check.
 - Confirm readable Home previews for a repeated pair, a repeated four-interval sequence, the seven-interval W4 workout, a continuous 30-minute run, and saved completion metadata.
+
+### 9.1 LVGL rendering
+
+- LVGL **9.3.0** owns the retained labels, arcs, switches, circle shapes, and invalidation. M5Unified/M5GFX remain the hardware layer for the display, buttons, RTC, audio, and vibration.
+- Reuse objects while a page is active; rebuild them only when its structure changes. Update the affected screen areas rather than clearing and transferring the full framebuffer on every timer tick.
+- Run LVGL on the main loop, using `millis()` as its UI clock. Workout timing remains in `session.h`, independently of the renderer and its animations.
+- Keep the existing four gestures and button-only flow. LVGL does not enable touch or replace the input grammar.
+- Use RGB565 partial rendering with a 24-row internal-memory buffer and a PSRAM framebuffer mirror for diagnostic captures. Copies must preserve RGB565 byte order.
+- Pin configuration in `firmware/c25k/lv_conf.h` and pass it to both library and sketch compilation. Generated countdown font data is committed; regenerating it is separate from building firmware.
+- If renderer initialization fails, show a static error, reject normal input, and expose `ui_ready=0` over USB. Do not start an invisible workout.
+- This migration does not change the saved-data schema, workout program, completion rules, or three-state circle legend.
 
 ## 10. Timing model
 
@@ -368,7 +379,7 @@ New segment/state cues replace an unfinished cue; acknowledgement taps do not in
 
 ## 12. Build environment
 
-The verified build uses Arduino CLI **1.5.1**, ESP32 core **3.3.10**, M5Unified **0.2.19**, and M5GFX **0.2.26**.
+The verified build uses Arduino CLI **1.5.1**, ESP32 core **3.3.10**, M5Unified **0.2.19**, M5GFX **0.2.26**, and LVGL **9.3.0**.
 Use target `esp32:esp32:esp32s3` with hardware USB CDC, 16 MiB flash, OPI PSRAM, and `app3M_fat9M_16MB` partitions.
 The complete configuration is in [scripts/build.sh](scripts/build.sh); [scripts/flash.sh](scripts/flash.sh) uploads individual components.
 The Arduino IDE and PlatformIO alternatives from the original proposal were not used for this verified build.
@@ -386,7 +397,10 @@ Arduino `Preferences` supplies NVS access.
 | [buttons.h](firmware/c25k/buttons.h) | Four-input grammar (§3) |
 | [progress.h](firmware/c25k/progress.h) | Packed data format, history ring, cursor, candidate reset (§7) |
 | [feedback.h](firmware/c25k/feedback.h) | Nonblocking audio and vibration cues (§8) |
-| [ui.h](firmware/c25k/ui.h) | Circular layouts, summaries, and countdown drawing (§4, §9) |
+| [ui.h](firmware/c25k/ui.h) | Circular page layouts, summaries, and typography (§4, §9) |
+| [lvgl_scene.h](firmware/c25k/lvgl_scene.h) | Retained LVGL widgets, partial display flushes, and capture mirror |
+| [lv_conf.h](firmware/c25k/lv_conf.h) | Reproducible LVGL configuration and font selection |
+| [e25k_timer_font.c](firmware/c25k/e25k_timer_font.c) | Generated 4-bit countdown glyphs; provenance in [assets/fonts](assets/fonts/README.md) |
 
 ### 12.1 Acceptance checks
 
@@ -395,6 +409,7 @@ Arduino `Preferences` supplies NVS access.
 - **Storage:** repeat history, ring overwrite, corrupt-record rejection, cursor rules, and reset failure preserving RAM pass the portable checks.
 - **On device:** save a completion and verify it after restart; confirm reset leaves history empty after an immediate restart with no intervening write; retain feedback preferences. Use isolated test data when production history exists.
 - **Visuals:** inspect representative round-screen captures, including long interval previews, paused timer, reset confirmation/result, and retained history counts. Confirm filled/thick/light circles during completion, skip, replay, pause, and Home browsing away from the next-up workout.
+- **LVGL:** verify anti-aliased text/circle captures, long summary and timer bounds, all screen flows, stable memory through repeated page changes, no repeated idle redraws, and timing while rendering.
 - Run [scripts/test.sh](scripts/test.sh) for the portable checks. [BUILD.md](BUILD.md) records device procedures and observed results; §14 keeps the unverified items visible.
 
 ## 13. Out of scope for v1
@@ -432,3 +447,4 @@ Known limits and possible later work:
 | [1.0](spec-history/v1.0.md) | 2026-09-11 | Original user-provided design, archived unchanged |
 | 1.1 | 2026-09-12 | Make this plan authoritative; add activity previews and explicit reset results; specify the exact storage layout, save/readback behavior, update preservation, clock limits, verified build choices, and remaining acceptance checks |
 | 1.2 | 2026-09-12 | Filled circles for completed workouts/segments, thick outline for current/next up, light outline for incomplete; distinguish browsing, skipping, partial sessions, and replay without changing storage schema |
+| 1.3 | 2026-09-20 | Migrate the UI to LVGL 9.3 with anti-aliased text and circles, a tabular countdown font, retained widgets, and partial redraws; preserve controls and storage schema |

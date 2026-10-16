@@ -12,7 +12,8 @@ It includes the current decisions and the checks still open.
 The design starts with a glance: what am I doing, and how much longer?
 RUN is coral.
 WALK is aqua.
-The countdown gets 122-pixel digits.
+The countdown gets a 122-pixel glyph line with stable, equal-width digits.
+LVGL 9.3 renders anti-aliased text, circles, and progress arcs, while M5Unified handles the hardware.
 
 ![The installed C25K firmware showing a thirty-minute run segment](images/run.png)
 
@@ -191,7 +192,7 @@ git clone https://github.com/chantastic/E25K.git
 cd E25K
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-arduino-cli lib install --no-deps "M5Unified@0.2.19" "M5GFX@0.2.26"
+arduino-cli lib install --no-deps "M5Unified@0.2.19" "M5GFX@0.2.26" "lvgl@9.3.0"
 ```
 
 Run from the repository root, replacing `PORT` with the StopWatch's port:
@@ -202,6 +203,8 @@ scripts/flash.sh PORT
 ```
 
 The host tests use macOS `clang++` with address and undefined-behavior sanitizers.
+The build script applies the repository's LVGL configuration to the sketch and the library.
+The generated countdown font is included; normal builds need no font-generation tools.
 The flash script builds and uploads individual components using 16 MB flash, OPI PSRAM, and the existing `app3M_fat9M_16MB` partition layout.
 With that layout already installed, it preserves saved C25K history.
 The merged download is produced at `.build/firmware/c25k.ino.merged.bin`.
@@ -217,3 +220,13 @@ The display stays at full brightness, and page changes are immediate to leave ti
 A useful timer has more than one kind of progress.
 The ring tells you where you are.
 The log remembers the time you put in, including the parts you repeated.
+
+## LVGL interface
+
+Version 1.1 replaces the custom full-screen renderer with retained LVGL labels, arcs, switches, and circle shapes.
+The workout engine, four button gestures, program, and saved-data format remain unchanged.
+Small text uses anti-aliased Montserrat, and the countdown uses tabular Roboto Condensed numerals.
+See [font sources and regeneration](assets/fonts/README.md).
+
+LVGL transfers changed areas instead of repainting the whole display on every timer update.
+This makes styling and future UI changes easier; battery-life improvements are not yet measured.
