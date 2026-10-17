@@ -28,7 +28,8 @@ try:
     # Both regions contain white marks on true black. Intermediate coverage
     # colors distinguish anti-aliased outlines/glyphs from binary hard edges.
     font_colors = len(set(image.crop((140, 108, 330, 153)).getdata()))
-    circle_colors = len(set(image.crop((65, 320, 80, 336)).getdata()))
+    # A Home ring segment edge (W7 D1, lower left).
+    circle_colors = len(set(image.crop((26, 322, 42, 338)).getdata()))
     assert font_colors >= 6 and circle_colors >= 4, (font_colors, circle_colors)
     report["edge_colors"] = {"text": font_colors, "circle": circle_colors}
 

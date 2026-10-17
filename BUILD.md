@@ -21,16 +21,16 @@ Press the two buttons within 80 ms of each other and keep them together for at l
 Release both before the next gesture.
 Touch and single-button holds have no actions.
 
-Home opens on the next-up workout, marked by a triangle and a thick circle outline.
+Home opens on the next-up workout, marked by a triangle and a dim-blue program-ring segment.
 Blue and Yellow browse W1 D1 through W9 D3, followed by History.
 Enter starts whichever workout is visible.
-A separate small tick outside the bottom arc marks the viewed page without moving the next-up marker.
+A separate small dot inside the ring marks the viewed page without moving the next-up marker.
 On the History landing page, Enter opens the saved sessions, newest first.
 
-Workout and segment circles use the same legend: filled means complete, a thick outline means current or next up, and a light outline means incomplete.
-A workout fills when the retained log contains a non-partial completion; partial-only workouts stay outlined.
-The current outline takes precedence over a filled circle when revisiting completed work.
-When the program is complete, there is no next-up outline or triangle; the final workout uses its completion state.
+Ring segments use one legend: periwinkle means complete (or passed during a workout), dim blue means current or next up, and dark grey means incomplete.
+A workout turns periwinkle when the retained log contains a non-partial completion; partial-only workouts stay grey.
+The next-up color takes precedence when revisiting completed work.
+When the program is complete, there is no next-up segment or triangle; the final workout uses its completion state.
 
 Each workout previews its total duration, run/walk times in order, and warm-up and cool-down.
 Read the activities left to right, then top to bottom.
@@ -41,8 +41,8 @@ During a workout, Blue skips to the next segment and marks the session partial.
 Yellow restarts the current segment; another Yellow within two seconds moves back one segment.
 Further Yellow clicks within that interval continue backwards.
 Navigation works while paused and leaves the workout paused.
-Segment circles fill only when their countdown finishes, so skipped segments stay outlined.
-Replay retains completion, with the current segment shown as a thick outline until you leave it again.
+The workout ring shows position: one arc per interval, proportional to its duration, with the current arc filling as it elapses.
+Segment completion still counts only finished countdowns; the Complete screen's ring leaves skipped segments grey.
 
 Hold both to show Cancel workout, then release and hold both again to discard it.
 The timer keeps running under that overlay unless already paused.
@@ -191,15 +191,17 @@ This checks a short interval, not full-session clock drift or physical input tim
 Repeat it with `scripts/soak-device.py SERIAL_PORT` using the same Python environment.
 Physical button feel, audible/haptic perception, outdoor readability, and battery runtime still need a run with the device in hand.
 
+The v1.5 all-screen restyle (spec 1.5) compiled with `scripts/build.sh` and passed `scripts/test.sh`; it has not been flashed or captured on hardware (see SPEC §14).
+
 ## Design choices
 
-The active timer uses a 122-pixel anti-aliased Roboto Condensed glyph line, a large segment label, one outer session arc, one inner segment ring, and colored segment dots.
-RUN uses coral and WALK uses aqua against true black.
+The active timer uses a 122-pixel anti-aliased Roboto Condensed glyph line with a faint halo, a small letter-spaced segment label, and one outer ring with an arc per interval, sized by duration.
+Every screen uses true black, off-white numerals, muted letter-spaced labels, and periwinkle accents.
 Paused digits remain dimmer while retaining contrast.
 The layout follows [Garmin's emphasis on prominent, centered information](https://developer.garmin.com/connect-iq/user-experience-guidelines/incorporating-the-visual-design-and-product-personalities/) and [Wear OS guidance for large countdown numerals](https://developer.android.com/design/ui/wear/guides/styles/typography/apply).
 
 Page changes are immediate; horizontal slide animation is omitted to preserve button polling time.
-Long histories show a moving window of dots and an explicit entry number.
+Long histories show a moving window of page segments and an explicit entry number.
 The fixed rotation is for handheld stopwatch use, with the loop below the display.
 
 The published [day 12 guide](https://esptember.com/day/day-12-c25k/) and [build story](https://esptember.com/day/day-12-c25k/story/) introduce this firmware.

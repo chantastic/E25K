@@ -50,7 +50,9 @@ class LvglScene {
 
   void endFrame() {
     hideRemainder(_labels, _label); hideRemainder(_boxes, _box);
-    // Line/triangle/arc topology stays fixed for a layout. Changes to page,
+    for (unsigned i = _arc; i < kArcs; ++i)
+      if (_arcs[i].obj) lv_obj_add_flag(_arcs[i].obj, LV_OBJ_FLAG_HIDDEN);
+    // Line/triangle topology stays fixed for a layout. Changes to page,
     // segment, time field or result rebuild the scene through beginFrame().
   }
   void refresh() { if (_display) lv_refr_now(_display); }
@@ -139,45 +141,20 @@ class LvglScene {
     lv_obj_set_size(triangle.obj,max(x1,max(x2,x3))-left+1,max(y1,max(y2,y3))-top+1);
   }
 
-  void ring(int cx,int cy,int radius,int thickness,float progress,uint32_t color,uint32_t track) {
-    LV_ASSERT(_arc < kArcs);
-    auto*& obj=_arcs[_arc++];
-    if(!obj) {
-      obj=lv_arc_create(_root); plain(obj);
-      lv_obj_set_style_opa(obj,LV_OPA_TRANSP,LV_PART_KNOB);
-      lv_arc_set_rotation(obj,270); lv_arc_set_bg_angles(obj,0,360);
-      lv_arc_set_range(obj,0,3600);
-      lv_obj_set_style_arc_rounded(obj,false,LV_PART_MAIN);
-      lv_obj_set_style_arc_rounded(obj,true,LV_PART_INDICATOR);
-      lv_obj_set_pos(obj,cx-radius,cy-radius); lv_obj_set_size(obj,radius*2,radius*2);
-      lv_obj_set_style_arc_width(obj,thickness,LV_PART_MAIN);
-      lv_obj_set_style_arc_width(obj,thickness,LV_PART_INDICATOR);
-      lv_obj_set_style_arc_color(obj,lv_color_hex(track),LV_PART_MAIN);
-    }
-    if (!lv_color_eq(lv_obj_get_style_arc_color(obj,LV_PART_INDICATOR),lv_color_hex(color)))
-      lv_obj_set_style_arc_color(obj,lv_color_hex(color),LV_PART_INDICATOR);
-    lv_arc_set_value(obj,lroundf(fmaxf(0,fminf(progress,1))*3600));
+  // A fixed ring segment, angles in degrees clockwise from 12 o'clock.
+  void arc(int cx,int cy,int radius,int thickness,int start,int end,uint32_t color) {
+    arcShape(cx,cy,radius,thickness,start,end,-1,color,color);
   }
 
-  // A fixed arc segment (degrees clockwise from 12 o'clock) in one color.
-  void arcSegment(int cx,int cy,int radius,int thickness,int start,int end,uint32_t color) {
-    LV_ASSERT(_arc < kArcs);
-    auto*& obj=_arcs[_arc++];
-    if(!obj) {
-      obj=lv_arc_create(_root); plain(obj);
-      lv_obj_set_style_opa(obj,LV_OPA_TRANSP,LV_PART_KNOB);
-      lv_obj_set_style_arc_opa(obj,LV_OPA_TRANSP,LV_PART_INDICATOR);
-      lv_arc_set_rotation(obj,270); lv_arc_set_bg_angles(obj,start,end);
-      lv_obj_set_style_arc_rounded(obj,true,LV_PART_MAIN);
-      lv_obj_set_pos(obj,cx-radius,cy-radius); lv_obj_set_size(obj,radius*2,radius*2);
-      lv_obj_set_style_arc_width(obj,thickness,LV_PART_MAIN);
-      lv_obj_set_style_arc_color(obj,lv_color_hex(color),LV_PART_MAIN);
-    }
-    if (!lv_color_eq(lv_obj_get_style_arc_color(obj,LV_PART_MAIN),lv_color_hex(color)))
-      lv_obj_set_style_arc_color(obj,lv_color_hex(color),LV_PART_MAIN);
+  // A ring segment whose track fills clockwise with progress (0..1).
+  void arcProgress(int cx,int cy,int radius,int thickness,int start,int end,float progress,
+                   uint32_t fill,uint32_t track) {
+    arcShape(cx,cy,radius,thickness,start,end,
+             int(lroundf(fmaxf(0,fminf(progress,1))*1000)),fill,track);
   }
 
-  void toggle(bool on,int cx,int cy,uint32_t foreground,uint32_t track,uint32_t muted) {
+  void toggle(bool on,int cx,int cy,uint32_t foreground,uint32_t track,uint32_t muted,
+              uint32_t knob) {
     if(!_switch) {
       _switch=lv_switch_create(_root); plain(_switch);
       lv_obj_set_size(_switch,104,50);
@@ -190,7 +167,7 @@ class LvglScene {
       lv_obj_set_style_bg_color(_switch,lv_color_hex(track),LV_PART_MAIN);
       lv_obj_set_style_bg_color(_switch,lv_color_hex(foreground),static_cast<lv_style_selector_t>(LV_PART_INDICATOR)|LV_STATE_CHECKED);
       lv_obj_set_style_bg_color(_switch,lv_color_hex(muted),LV_PART_KNOB);
-      lv_obj_set_style_bg_color(_switch,lv_color_hex(0),static_cast<lv_style_selector_t>(LV_PART_KNOB)|LV_STATE_CHECKED);
+      lv_obj_set_style_bg_color(_switch,lv_color_hex(knob),static_cast<lv_style_selector_t>(LV_PART_KNOB)|LV_STATE_CHECKED);
       lv_obj_set_style_pad_all(_switch,-7,LV_PART_KNOB);
       lv_obj_set_style_anim_duration(_switch,120,0);
       lv_obj_set_pos(_switch,cx-52,cy-25);
@@ -204,6 +181,9 @@ class LvglScene {
   struct BoxState { int x,y,w,h,radius; uint32_t color; int border,fill; };
   struct Line { lv_obj_t* obj; lv_point_precise_t points[2]; int width; uint32_t color; };
   struct Triangle { lv_obj_t* obj; lv_point_precise_t points[3]; uint32_t color; };
+  // Custom-drawn arc sized to its own bounds, so timer-label invalidations do
+  // not make every ring segment run the arc mask over the screen center.
+  struct Arc { lv_obj_t* obj; int cx,cy,radius,width,start,end,value; uint32_t fill,track; };
   M5Canvas _canvas{&M5.Display};
   void* _buffer=nullptr;
   lv_display_t* _display=nullptr;
@@ -214,8 +194,9 @@ class LvglScene {
   BoxState _boxState[64]{};
   Line _lines[32]{};
   Triangle _triangles[4]{};
-  static constexpr unsigned kArcs = 16;
-  lv_obj_t* _arcs[kArcs]{};
+  // Home uses 27 workout segments; workouts have at most 18 intervals.
+  static constexpr unsigned kArcs = 32;
+  Arc _arcs[kArcs]{};
   lv_obj_t* _switch=nullptr;
   uint32_t _layout=UINT32_MAX, _flushes=0, _background=0;
   uint64_t _pixels=0;
@@ -251,6 +232,65 @@ class LvglScene {
     if(created || cached.border!=border) lv_obj_set_style_border_width(obj,border,0);
     cached={x,y,w,h,radius,color,border,fill};
   }
+
+  void arcShape(int cx,int cy,int radius,int thickness,int start,int end,int value,
+                uint32_t fill,uint32_t track) {
+    LV_ASSERT(_arc < kArcs);
+    auto& a=_arcs[_arc++];
+    if(end<=start) end=start+1;
+    const bool created=!a.obj;
+    if(created) {
+      a.obj=lv_obj_create(_root); plain(a.obj);
+      lv_obj_add_event_cb(a.obj,drawArc,LV_EVENT_DRAW_MAIN,&a);
+    }
+    lv_obj_remove_flag(a.obj,LV_OBJ_FLAG_HIDDEN);
+    const bool moved=created || a.cx!=cx || a.cy!=cy || a.radius!=radius ||
+      a.width!=thickness || a.start!=start || a.end!=end;
+    if(moved) {
+      if(!created) lv_obj_invalidate(a.obj);
+      a.cx=cx; a.cy=cy; a.radius=radius; a.width=thickness; a.start=start; a.end=end;
+      lv_area_t area;
+      lv_draw_arc_get_area(cx,cy,radius,(start+270)%360,(end+270)%360,thickness,true,&area);
+      lv_area_increase(&area,2,2);  // anti-aliased edge
+      lv_obj_set_pos(a.obj,area.x1,area.y1);
+      lv_obj_set_size(a.obj,lv_area_get_width(&area),lv_area_get_height(&area));
+    }
+    if(moved || a.fill!=fill || a.track!=track) {
+      a.value=value; a.fill=fill; a.track=track;
+      lv_obj_invalidate(a.obj);
+    } else if(a.value!=value) {
+      // Progress ticks repaint only the swept sliver, not the whole segment.
+      const int before=fillEnd(a), after=fillEnd(a.start,a.end,value);
+      a.value=value;
+      if(before!=after) {
+        lv_area_t area;
+        lv_draw_arc_get_area(cx,cy,radius,(min(before,after)+270)%360,(max(before,after)+270)%360,
+                             thickness,true,&area);
+        lv_area_increase(&area,2,2);
+        lv_obj_invalidate_area(a.obj,&area);
+      }
+    }
+  }
+
+  static void drawArc(lv_event_t* event) {
+    auto* a=static_cast<Arc*>(lv_event_get_user_data(event));
+    lv_draw_arc_dsc_t d; lv_draw_arc_dsc_init(&d);
+    d.center={a->cx,a->cy}; d.radius=a->radius; d.width=a->width; d.rounded=1;
+    d.opa=LV_OPA_COVER;
+    auto draw=[&](int start,int end,uint32_t color) {
+      if(end<=start) return;
+      d.start_angle=(start+270)%360; d.end_angle=(end+270)%360; d.color=lv_color_hex(color);
+      lv_draw_arc(lv_event_get_layer(event),&d);
+    };
+    if(a->value<0) { draw(a->start,a->end,a->fill); return; }
+    draw(a->start,a->end,a->track);
+    draw(a->start,fillEnd(*a),a->fill);
+  }
+
+  static int fillEnd(int start,int end,int value) {
+    return value<0 ? end : start+(end-start)*value/1000;
+  }
+  static int fillEnd(const Arc& a) { return fillEnd(a.start,a.end,a.value); }
 
   static void drawTriangle(lv_event_t* event) {
     auto* triangle=static_cast<Triangle*>(lv_event_get_user_data(event));

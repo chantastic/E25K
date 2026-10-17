@@ -10,8 +10,7 @@ The [project plan](SPEC.md) is the source of truth for workout behavior, control
 It includes the current decisions and the checks still open.
 
 The design starts with a glance: what am I doing, and how much longer?
-RUN is coral.
-WALK is aqua.
+Every screen is true black with off-white numerals, small muted labels, and periwinkle accents.
 The countdown gets a 122-pixel glyph line with stable, equal-width digits.
 LVGL 9.3 renders anti-aliased text, circles, and progress arcs, while M5Unified handles the hardware.
 
@@ -75,21 +74,22 @@ The firmware allows 80 ms between presses and requires at least 80 ms of overlap
 A held pair produces Escape once; releasing it cannot also produce Enter.
 
 Home pages through W1 D1 to W9 D3, then History, and wraps at either end.
-The triangle and thick circle outline mark the next-up workout.
+Home's outer ring has one segment per workout; the wider gap at the top is History.
+The triangle and a dim-blue segment mark the next-up workout.
 Browsing leaves it in place; Enter starts whichever workout is visible.
-A small tick outside the bottom arc marks the page you're viewing.
+A small dot inside the ring marks the page you're viewing.
 
-Workout and segment circles share one legend:
+Ring segments share one legend:
 
-| Circle | Meaning |
+| Segment | Meaning |
 | --- | --- |
-| Filled | Complete |
-| Thick outline | Current segment or next-up workout |
-| Light outline | Incomplete |
+| Periwinkle | Complete (or passed, during a workout) |
+| Dim blue | Current segment or next-up workout |
+| Dark grey | Incomplete |
 
-A workout fills when the retained history includes at least one full completion; partial-only workouts stay outlined.
-The thick outline takes precedence when a completed item is current again.
-At program completion, the next-up outline disappears and the final workout uses its completion state.
+A workout turns periwinkle when the retained history includes at least one full completion; partial-only workouts stay grey.
+The next-up color takes precedence when a completed workout is next again.
+At program completion, the next-up marker disappears and the final workout uses its completion state.
 
 Each workout shows its total time and a preview of the run/walk sequence before you start.
 Read the activities left to right, then top to bottom; matching sequences show how many rounds to repeat.
@@ -97,9 +97,9 @@ W1 D1 is eight rounds of a one-minute run and a ninety-second walk, with a five-
 
 ![W1 D1 showing eight rounds of running and walking, with warm-up, cool-down, and total duration](images/workout-summary.png)
 
-During a workout, the outer arc shows your position in the whole session and the inner ring shows progress through the current segment.
-Colored circles reveal the run/walk pattern and fill as each countdown finishes.
-Skipping leaves a segment outlined; replay keeps its completion, with the thick current outline showing until you move on.
+During a workout, the ring has one arc per interval, sized by its share of the session.
+Passed intervals are periwinkle; the current one fills as it counts down.
+The Complete screen shows which intervals finished; skipped ones stay grey.
 Blue and Yellow still work while paused, and leave the timer paused.
 
 ![Paused countdown on the StopWatch](images/paused.png)
