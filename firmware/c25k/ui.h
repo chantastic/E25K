@@ -49,6 +49,8 @@ class Ui {
       uint32_t(v.resetSucceeded) << 27 | uint32_t(v.historyCount == 0) << 28 |
       uint32_t(v.homePage == v.cursor) << 29 | uint32_t(v.programComplete) << 30;
     _scene.beginFrame(layout);
+    const bool running = v.screen == Screen::Workout || v.screen == Screen::CancelConfirm;
+    _scene.background(running ? FACE : BLACK);
     switch (v.screen) {
       case Screen::Home: home(v); break;
       case Screen::Workout: workout(v); break;
@@ -80,14 +82,24 @@ class Ui {
   static constexpr uint32_t TRACK = 0x24272B;
   static constexpr uint32_t RUN = 0xFF765E;
   static constexpr uint32_t WALK = 0x52D9CB;
+  // Run screen palette.
+  static constexpr uint32_t FACE = 0x111214;
+  static constexpr uint32_t CREAM = 0xF2EFE6;
+  static constexpr uint32_t LABEL = 0x8A8C93;
+  static constexpr uint32_t BLUE = 0x6B7CFF;
+  static constexpr uint32_t BLUE_DIM = 0x3A4594;
+  static constexpr uint32_t SEG_TRACK = 0x2A2B30;
+  static constexpr uint32_t PAUSED_DONE = 0x4C5170;
+  static constexpr uint32_t PAUSED_NOW = 0x33364A;
+  static constexpr unsigned RING_SEGMENTS = 12;
   LvglScene _scene;
   int _cx = 234, _cy = 234;
 
   LvglScene& surface() { return _scene; }
 
   void text(const char* str, int y, const lv_font_t* font,
-            uint32_t color = WHITE, int dx = 0) {
-    _scene.text(str, _cx + dx, y, font, color);
+            uint32_t color = WHITE, int dx = 0, int letterSpace = 0) {
+    _scene.text(str, _cx + dx, y, font, color, letterSpace);
   }
 
   static void duration(char* dst, size_t n, uint32_t seconds) {
@@ -172,7 +184,7 @@ class Ui {
 
   void countdown(uint32_t seconds, uint32_t color) {
     char value[12]; duration(value, sizeof(value), seconds);
-    text(value, 220, &e25k_timer_font, color);
+    text(value, 228, &e25k_timer_font, color);
   }
 
   void activitySummary(const Workout& plan) {
@@ -271,20 +283,31 @@ class Ui {
   void workout(const UiView& v) {
     const Workout& plan = workoutAt(v.workoutIndex);
     const unsigned index = v.segmentIndex < plan.count ? v.segmentIndex : plan.count - 1;
-    SegmentType type = plan.segments[index].type;
-    uint32_t accent = segmentColor(type);
-    ring(225, 3, v.sessionProgress, WHITE);
-    ring(213, 9, v.segmentProgress, v.paused ? DIM : accent);
-    text(v.paused ? "PAUSED" : segmentLabel(type), 111, &lv_font_montserrat_40,
-         v.paused ? MUTED : accent);
-    countdown(v.remainingSec, v.paused ? PAUSED : WHITE);
-    char line[48], time[16];
-    snprintf(line, sizeof(line), "Seg %u/%u", unsigned(index + 1), unsigned(plan.count));
-    text(line, 320, &lv_font_montserrat_18, MUTED);
-    duration(time, sizeof(time), v.elapsedSec);
-    snprintf(line, sizeof(line), "%s elapsed", time);
-    text(line, 350, &lv_font_montserrat_18, MUTED);
-    arcDots(plan.count, index, v.completedSegments, &plan);
+    const SegmentType type = plan.segments[index].type;
+    // Twelve fixed segments show whole-session progress; fixed topology keeps
+    // the retained arcs stable across timer ticks.
+    const float progress = fmaxf(0, fminf(v.sessionProgress, 1));
+    constexpr int step = 360 / RING_SEGMENTS, gap = 3;
+    for (unsigned i = 0; i < RING_SEGMENTS; ++i) {
+      const float start = float(i) / RING_SEGMENTS, end = float(i + 1) / RING_SEGMENTS;
+      uint32_t color = SEG_TRACK;
+      if (progress >= end) color = v.paused ? PAUSED_DONE : BLUE;
+      else if (progress > start) color = v.paused ? PAUSED_NOW : BLUE_DIM;
+      _scene.arcSegment(_cx, _cy, 222, 8, int(i) * step + gap, int(i + 1) * step - gap, color);
+    }
+    text(v.paused ? "PAUSED" : segmentLabel(type), 146, &lv_font_montserrat_18,
+         v.paused ? CREAM : LABEL, 0, 4);
+    countdown(v.remainingSec, v.paused ? PAUSED : CREAM);
+    // Montserrat lacks U+00B7, so the separator dot is drawn.
+    char week[8], day[8];
+    snprintf(week, sizeof(week), "W%u", unsigned(v.workoutIndex / 3 + 1));
+    snprintf(day, sizeof(day), "D%u", unsigned(v.workoutIndex % 3 + 1));
+    const int y = 318;
+    const int left = LvglScene::textWidth(week, &lv_font_montserrat_18) / 2 + 16;
+    const int right = LvglScene::textWidth(day, &lv_font_montserrat_18) / 2 + 16;
+    text(week, y, &lv_font_montserrat_18, LABEL, -left, 2);
+    text(day, y, &lv_font_montserrat_18, LABEL, right, 2);
+    surface().fillCircle(_cx, y, 2, LABEL);
   }
 
   void cancelConfirm() {

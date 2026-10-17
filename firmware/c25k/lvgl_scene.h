@@ -71,24 +71,33 @@ class LvglScene {
     return size.x;
   }
 
-  void text(const char* value, int cx, int cy, const lv_font_t* font, uint32_t color) {
+  void background(uint32_t color) {
+    if (color == _background) return;
+    _background = color;
+    lv_obj_set_style_bg_color(_root, lv_color_hex(color), 0);
+  }
+
+  void text(const char* value, int cx, int cy, const lv_font_t* font, uint32_t color,
+            int letterSpace = 0) {
     LV_ASSERT(_label < 32);
     auto& cached = _labelState[_label];
     auto*& obj = _labels[_label++];
     const bool created = !obj;
     if (created) {
       obj = lv_label_create(_root); plain(obj);
-      lv_obj_set_style_text_letter_space(obj, 0, 0);
       lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
       lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     }
     lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
     if (created || cached.font != font) lv_obj_set_style_text_font(obj, font, 0);
+    if (created || cached.space != letterSpace)
+      lv_obj_set_style_text_letter_space(obj, letterSpace, 0);
     if (created || cached.color != color) lv_obj_set_style_text_color(obj, lv_color_hex(color), 0);
     if (strcmp(lv_label_get_text(obj), value ? value : "")) lv_label_set_text(obj, value ? value : "");
-    if (created || cached.x != cx || cached.y != cy || cached.font != font)
+    if (created || cached.x != cx || cached.y != cy || cached.font != font ||
+        cached.space != letterSpace)
       lv_obj_align(obj, LV_ALIGN_TOP_MID, cx - M5.Display.width() / 2, cy - font->line_height / 2);
-    cached = {font,cx,cy,color};
+    cached = {font,cx,cy,color,letterSpace};
   }
 
   void fillRect(int x,int y,int w,int h,uint32_t color) { box(x,y,w,h,0,color,0,true); }
@@ -131,7 +140,7 @@ class LvglScene {
   }
 
   void ring(int cx,int cy,int radius,int thickness,float progress,uint32_t color,uint32_t track) {
-    LV_ASSERT(_arc < 2);
+    LV_ASSERT(_arc < kArcs);
     auto*& obj=_arcs[_arc++];
     if(!obj) {
       obj=lv_arc_create(_root); plain(obj);
@@ -148,6 +157,24 @@ class LvglScene {
     if (!lv_color_eq(lv_obj_get_style_arc_color(obj,LV_PART_INDICATOR),lv_color_hex(color)))
       lv_obj_set_style_arc_color(obj,lv_color_hex(color),LV_PART_INDICATOR);
     lv_arc_set_value(obj,lroundf(fmaxf(0,fminf(progress,1))*3600));
+  }
+
+  // A fixed arc segment (degrees clockwise from 12 o'clock) in one color.
+  void arcSegment(int cx,int cy,int radius,int thickness,int start,int end,uint32_t color) {
+    LV_ASSERT(_arc < kArcs);
+    auto*& obj=_arcs[_arc++];
+    if(!obj) {
+      obj=lv_arc_create(_root); plain(obj);
+      lv_obj_set_style_opa(obj,LV_OPA_TRANSP,LV_PART_KNOB);
+      lv_obj_set_style_arc_opa(obj,LV_OPA_TRANSP,LV_PART_INDICATOR);
+      lv_arc_set_rotation(obj,270); lv_arc_set_bg_angles(obj,start,end);
+      lv_obj_set_style_arc_rounded(obj,true,LV_PART_MAIN);
+      lv_obj_set_pos(obj,cx-radius,cy-radius); lv_obj_set_size(obj,radius*2,radius*2);
+      lv_obj_set_style_arc_width(obj,thickness,LV_PART_MAIN);
+      lv_obj_set_style_arc_color(obj,lv_color_hex(color),LV_PART_MAIN);
+    }
+    if (!lv_color_eq(lv_obj_get_style_arc_color(obj,LV_PART_MAIN),lv_color_hex(color)))
+      lv_obj_set_style_arc_color(obj,lv_color_hex(color),LV_PART_MAIN);
   }
 
   void toggle(bool on,int cx,int cy,uint32_t foreground,uint32_t track,uint32_t muted) {
@@ -173,7 +200,7 @@ class LvglScene {
   }
 
  private:
-  struct LabelState { const lv_font_t* font; int x,y; uint32_t color; };
+  struct LabelState { const lv_font_t* font; int x,y; uint32_t color; int space; };
   struct BoxState { int x,y,w,h,radius; uint32_t color; int border,fill; };
   struct Line { lv_obj_t* obj; lv_point_precise_t points[2]; int width; uint32_t color; };
   struct Triangle { lv_obj_t* obj; lv_point_precise_t points[3]; uint32_t color; };
@@ -187,9 +214,10 @@ class LvglScene {
   BoxState _boxState[64]{};
   Line _lines[32]{};
   Triangle _triangles[4]{};
-  lv_obj_t* _arcs[2]{};
+  static constexpr unsigned kArcs = 16;
+  lv_obj_t* _arcs[kArcs]{};
   lv_obj_t* _switch=nullptr;
-  uint32_t _layout=UINT32_MAX, _flushes=0;
+  uint32_t _layout=UINT32_MAX, _flushes=0, _background=0;
   uint64_t _pixels=0;
   unsigned _label=0,_box=0,_line=0,_triangle=0,_arc=0;
 

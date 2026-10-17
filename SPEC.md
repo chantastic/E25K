@@ -123,13 +123,11 @@ History is reached by paging past the last workout on Home (see §4.1), and Esca
 
 Layout, top to bottom, all centered:
 
-- Thin **session-progress arc** around the outer edge: position in the planned sequence, including warm-up/cool-down. It moves back on replay and forward on skip; actual elapsed time is accounted separately (§10).
-- Thicker **segment-progress ring** just inside it, fills clockwise as the current segment elapses.
-- Segment label: `WARM UP` / `RUN` / `WALK` / `COOL DOWN`.
-- Segment countdown, largest text on screen: `M:SS`.
-- Below: `Seg 5/13` and elapsed session time in small text.
-- Bottom arc: one circle per segment. Filled = completed; thick outline = current; light outline = incomplete. Run segments use the run color and walking segments use the walk color.
-- A segment fills when its countdown reaches the end. Skipping it leaves it incomplete. Replaying retains its completed status, with the current outline taking precedence until navigation leaves that segment again.
+- Near-black (`#111214`) face with an outer ring of 12 equal arc segments separated by small gaps, showing session position in the planned sequence, including warm-up/cool-down. It moves back on replay and forward on skip; actual elapsed time is accounted separately (§10). Passed segments are periwinkle (`#6B7CFF`), the one in progress is dimmer blue, and remaining ones are dark grey (`#2A2B30`).
+- Small letter-spaced segment label at top center in muted grey: `WARM UP` / `RUN` / `WALK` / `COOL DOWN`.
+- Segment countdown, largest text on screen, in off-white (`#F2EFE6`): `M:SS`.
+- Below: `W3 · D2` in small muted text. No segment counter, elapsed time, or segment dots on this screen.
+- Segment completion (countdown reaching the end vs. skipping) is still tracked and logged, but is not drawn on the run screen.
 
 Controls:
 
@@ -140,7 +138,7 @@ Controls:
 | Enter | Pause / Resume |
 | Escape | Open Cancel Confirm |
 
-Paused state: countdown dims, `PAUSED` replaces the segment label, ring stops. Any Enter resumes. Blue/Yellow still work while paused (they act, then remain paused).
+Paused state: countdown dims, `PAUSED` replaces the segment label, ring segments desaturate and stop. Any Enter resumes. Blue/Yellow still work while paused (they act, then remain paused).
 
 Screen: **always on, full brightness**, including while paused. The current build also keeps full brightness on other pages. Power-saving deferred to v2.
 
@@ -342,7 +340,7 @@ New segment/state cues replace an unfinished cue; acknowledgement taps do not in
 
 ## 9. Visual style
 
-- True black background, with coral **`#FF765E`** for RUN and aqua **`#52D9CB`** for WALK. Use those colors consistently in summaries, segment labels, rings, and dots; other text is white or grey.
+- True black background (the run screen uses the near-black face in §4.2), with coral **`#FF765E`** for RUN and aqua **`#52D9CB`** for WALK. Use those colors consistently in summaries and dots (the run screen uses its own blue/grey palette, §4.2); other text is white or grey.
 - Center layouts within the actual 468×468 drawing surface and circular aperture. Keep important content at least about 20 px from the circle edge; only progress rings approach the rim. The inscribed square is a guide, not an absolute text boundary.
 - Page changes are immediate. Horizontal slide animation is omitted to preserve time for button polling.
 - Countdown numerals use a **122 px** glyph line with tabular advances, rendered from a 4-bit Roboto Condensed font. Supporting text uses LVGL's 4-bit Montserrat fonts at 14, 18, 24, 32, 40, and 48 px. Text, circles, and arcs must use anti-aliasing. Daylight readability remains an in-hand acceptance check.
@@ -433,6 +431,7 @@ Remaining acceptance checks:
 - Perceived audio/vibration cues, including whether the ten-second warning is useful during a run.
 - Daylight readability, full-workout battery runtime, and full-session timing drift. The recorded 125-second check is not a substitute for these.
 - RTC calendar correctness and retention across a real power-off.
+- v1.4 run screen on hardware: ring segment gaps/contrast, label letter-spacing, drawn W·D separator, paused contrast, and Cancel Confirm overlay over the near-black face.
 
 Known limits and possible later work:
 
@@ -448,3 +447,4 @@ Known limits and possible later work:
 | 1.1 | 2026-09-12 | Make this plan authoritative; add activity previews and explicit reset results; specify the exact storage layout, save/readback behavior, update preservation, clock limits, verified build choices, and remaining acceptance checks |
 | 1.2 | 2026-09-12 | Filled circles for completed workouts/segments, thick outline for current/next up, light outline for incomplete; distinguish browsing, skipping, partial sessions, and replay without changing storage schema |
 | 1.3 | 2026-09-20 | Migrate the UI to LVGL 9.3 with anti-aliased text and circles, a tabular countdown font, retained widgets, and partial redraws; preserve controls and storage schema |
+| 1.4 | 2026-09-21 | Simplify the run screen to a near-black face with a 12-segment session ring, small label, countdown, and week/day; remove segment counter, elapsed time, inner ring, and segment dots; no control or storage changes |
