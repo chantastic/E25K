@@ -249,40 +249,27 @@ void render() {
   view.storageOk = storageOk; view.battery = batteryPercent;
   view.resetSucceeded = resetSucceeded;
   view.historyCount = progress.count; view.historyPage = historyPage;
-  for (uint16_t i = 0; i < progress.count; ++i) {
-    const auto* entry = progress.newest(i);
-    if (!(entry->flags & 1)) view.completedWorkouts |= uint32_t(1) << entry->workout;
-  }
-  view.completedSegments = session.completedSegments;
   view.workoutIndex = session.workoutIndex; view.segmentIndex = session.segmentIndex;
   view.segmentCount = workoutAt(session.workoutIndex).count;
   view.remainingSec = (session.remainingMs() + 999) / 1000;
   view.elapsedSec = session.totalElapsedMs / 1000; view.runSec = session.runElapsedMs / 1000;
-  view.paused = session.paused; view.partial = session.partial;
+  view.paused = session.paused;
   view.plannedSec = totalSeconds(workoutAt(session.workoutIndex));
   view.segmentProgress = float(session.segmentElapsedMs) / (session.currentSegment().seconds * 1000.0f);
   view.sessionProgress = float(session.progressMs()) / (view.plannedSec * 1000.0f);
-  char date[32]{}, lastDate[24]{};
+  char date[32]{};
   view.rtcValid = rtcTimestamp() != 0;
   if (screen == Screen::Home && homePage < 27) {
     view.workoutIndex = homePage; view.plannedSec = totalSeconds(workoutAt(homePage));
-    bool found = false;
-    for (uint16_t i = 0; i < progress.count; ++i) {
-      const auto* entry = progress.newest(i);
-      if (entry->workout != homePage) continue;
-      if (entry->flags & 1) ++view.partialCount;
-      else ++view.completionCount;
-      if (!found) { formatDate(entry->timestamp, lastDate, sizeof(lastDate), false); found = true; }
-    }
   } else if (screen == Screen::History && progress.count) {
     const auto* entry = progress.newest(historyPage);
-    view.workoutIndex = entry->workout; view.partial = entry->flags & 1;
+    view.workoutIndex = entry->workout;
     view.elapsedSec = entry->total_sec; view.runSec = entry->run_sec;
     formatDate(entry->timestamp, date, sizeof(date), true);
   } else if (screen == Screen::SetTime) {
     snprintf(date, sizeof(date), "%04d-%02d-%02d", editDate.year, editDate.month, editDate.date);
   } else formatDate(rtcTimestamp(), date, sizeof(date), true);
-  view.dateText = date; view.lastDateText = lastDate;
+  view.dateText = date;
   ui.draw(view); ui.push(); dirty = false; lastDraw = millis();
 }
 

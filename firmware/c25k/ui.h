@@ -19,16 +19,14 @@ struct UiView {
   uint8_t homePage = 0, cursor = 0, settingsPage = 0, timeField = 0;
   uint8_t hour = 0, minute = 0;
   bool programComplete = false, soundOn = true, vibOn = true;
-  bool partial = false, paused = false, rtcValid = true, storageOk = true;
+  bool paused = false, rtcValid = true, storageOk = true;
   bool resetSucceeded = false;
   uint8_t workoutIndex = 0, segmentIndex = 0, segmentCount = 0;
   uint32_t remainingSec = 0, elapsedSec = 0, runSec = 0, plannedSec = 0;
-  uint32_t completedWorkouts = 0, completedSegments = 0;
   float segmentProgress = 0, sessionProgress = 0;
-  uint16_t historyCount = 0, historyPage = 0, completionCount = 0, partialCount = 0;
+  uint16_t historyCount = 0, historyPage = 0;
   int battery = -1;
   const char* dateText = "";
-  const char* lastDateText = "";
 };
 
 class Ui {
@@ -74,7 +72,8 @@ class Ui {
 
  private:
   // One palette for every screen: true black, off-white numerals, muted
-  // letter-spaced labels and periwinkle accents (§9).
+  // letter-spaced labels and periwinkle accents (§9). Rings show position
+  // only, never completion.
   static constexpr uint32_t BLACK = 0x000000;
   static constexpr uint32_t CREAM = 0xF2EFE6;
   static constexpr uint32_t LABEL = 0x8A8C93;
@@ -85,8 +84,8 @@ class Ui {
   static constexpr uint32_t BLUE = 0x6B7CFF;
   static constexpr uint32_t BLUE_DIM = 0x3A4594;
   static constexpr uint32_t SEG_TRACK = 0x2A2B30;
-  static constexpr uint32_t PAUSED_DONE = 0x4C5170;
-  static constexpr uint32_t PAUSED_NOW = 0x33364A;
+  static constexpr uint32_t PAUSED_FILL = 0x4C5170;
+  static constexpr uint32_t PAUSED_TRACK = 0x33364A;
   static constexpr int RING_R = 222, RING_W = 8, PAGE_W = 6;
   LvglScene _scene;
   int _cx = 234, _cy = 234;
@@ -149,10 +148,10 @@ class Ui {
   }
 
   // One segment per interval, arc length proportional to its planned share
-  // of the workout, separated by constant gaps. `progress >= 0` fills the
-  // current segment over a dim track; completed/remaining use `done`.
-  void intervalRing(const Workout& plan, int current, float progress, uint32_t done,
-                    uint32_t now, uint32_t nowTrack, uint32_t completedMask, bool byMask) {
+  // of the workout, separated by constant gaps. Only the current segment is
+  // highlighted, filling over its track; every other segment stays neutral.
+  void intervalRing(const Workout& plan, int current, float progress, uint32_t fill,
+                    uint32_t track) {
     constexpr int gap = 4;
     const uint32_t total = totalSeconds(plan);
     if (!total || !plan.count) return;
@@ -162,13 +161,10 @@ class Ui {
       const int start = gap / 2 + i * gap + int((uint64_t(elapsed) * avail + total / 2) / total);
       elapsed += plan.segments[i].seconds;
       const int end = gap / 2 + i * gap + int((uint64_t(elapsed) * avail + total / 2) / total);
-      if (int(i) == current) {
-        _scene.arcProgress(_cx, _cy, RING_R, RING_W, start, end, progress, now, nowTrack);
-      } else {
-        const bool complete = byMask ? (i < 32 && (completedMask & (uint32_t(1) << i)))
-                                     : int(i) < current;
-        ringArc(start, end, complete ? done : SEG_TRACK);
-      }
+      if (int(i) == current)
+        _scene.arcProgress(_cx, _cy, RING_R, RING_W, start, end, progress, fill, track);
+      else
+        ringArc(start, end, SEG_TRACK);
     }
   }
 
@@ -193,15 +189,14 @@ class Ui {
   }
 
   // Home: 27 workout segments with a wider gap at 12 o'clock where the
-  // History page sits between W9 D3 and W1 D1.
+  // History page sits between W9 D3 and W1 D1. Segments are neutral; only
+  // the next-up workout is highlighted.
   void programRing(const UiView& v) {
     constexpr int pitch = 13, length = 9, offset = 6;
     const int next = v.programComplete ? -1 : v.cursor;
     for (unsigned i = 0; i < kWorkoutCount; ++i) {
       const int start = offset + int(i) * pitch;
-      const bool done = v.completedWorkouts & (uint32_t(1) << i);
-      // Next-up takes precedence over completed, including replay.
-      ringArc(start, start + length, int(i) == next ? BLUE_DIM : done ? BLUE : SEG_TRACK);
+      ringArc(start, start + length, int(i) == next ? BLUE_DIM : SEG_TRACK);
     }
     // The viewed page gets a small inner dot; browsing never recolors segments.
     const float angle = v.homePage >= kWorkoutCount ? 0
@@ -297,21 +292,7 @@ class Ui {
     snprintf(line, sizeof(line), "%s TOTAL", time);
     text(line, 199, &lv_font_montserrat_18, CREAM, 0, 2);
     activitySummary(workoutAt(v.homePage));
-    if (v.completionCount || v.partialCount) {
-      if (v.completionCount && v.partialCount) {
-        snprintf(line, sizeof(line), "%u COMPLETE   ~%u PARTIAL",
-                 unsigned(v.completionCount), unsigned(v.partialCount));
-      } else if (v.partialCount) {
-        snprintf(line, sizeof(line), "~%u PARTIAL %s", unsigned(v.partialCount),
-                 v.partialCount == 1 ? "SESSION" : "SESSIONS");
-      } else {
-        snprintf(line, sizeof(line), "%u %s", unsigned(v.completionCount),
-                 v.completionCount == 1 ? "COMPLETION" : "COMPLETIONS");
-      }
-      label(line, 349, LABEL, 1);
-      if (v.lastDateText && *v.lastDateText) label(v.lastDateText, 367, DIM, 1);
-    }
-    label("BOTH TO START", 391, BLUE);
+    hint("BOTH TO START");
   }
 
   void workout(const UiView& v) {
@@ -321,8 +302,7 @@ class Ui {
     // Ring topology depends only on the workout, so ticks just move the
     // current segment's fill.
     intervalRing(plan, int(index), v.segmentProgress,
-                 v.paused ? PAUSED_DONE : BLUE, v.paused ? PAUSED_DONE : BLUE,
-                 v.paused ? PAUSED_NOW : BLUE_DIM, 0, false);
+                 v.paused ? PAUSED_FILL : BLUE, v.paused ? PAUSED_TRACK : BLUE_DIM);
     text(v.paused ? "PAUSED" : segmentLabel(type), 146, &lv_font_montserrat_18,
          v.paused ? CREAM : LABEL, 0, 4);
     countdown(v.remainingSec, v.paused);
@@ -350,11 +330,8 @@ class Ui {
   }
 
   void complete(const UiView& v) {
-    // Finished segments in accent; skipped ones stay grey.
-    intervalRing(workoutAt(v.workoutIndex), -1, 0, BLUE, BLUE, BLUE_DIM,
-                 v.completedSegments, true);
     check(_cx, 100, BLUE, 2);
-    text(v.partial ? "DONE ~" : "DONE", 164, &lv_font_montserrat_48);
+    text("DONE", 164, &lv_font_montserrat_48);
     weekDay(v.workoutIndex, 214, &lv_font_montserrat_14, LABEL, 2, 12, 2);
     metric("TOTAL TIME", v.elapsedSec, 276, -88);
     metric("RUN TIME", v.runSec, 276, 88);
@@ -382,10 +359,6 @@ class Ui {
     }
     weekDay(v.workoutIndex, 148, &lv_font_montserrat_40, CREAM, 0, 16, 4);
     label(v.dateText && *v.dateText ? v.dateText : "--", 196, LABEL, 1);
-    if (v.partial) {
-      surface().drawRoundRect(_cx - 50, 222, 100, 24, 12, SEG_TRACK);
-      label("PARTIAL", 234, LABEL, 2, &lv_font_montserrat_12);
-    }
     metric("TOTAL TIME", v.elapsedSec, 284, -88);
     metric("RUN TIME", v.runSec, 284, 88);
     char page[24];

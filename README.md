@@ -83,13 +83,11 @@ Ring segments share one legend:
 
 | Segment | Meaning |
 | --- | --- |
-| Periwinkle | Complete (or passed, during a workout) |
-| Dim blue | Current segment or next-up workout |
-| Dark grey | Incomplete |
+| Dim blue | Current interval or next-up workout |
+| Dark grey | Everything else |
 
-A workout turns periwinkle when the retained history includes at least one full completion; partial-only workouts stay grey.
-The next-up color takes precedence when a completed workout is next again.
-At program completion, the next-up marker disappears and the final workout uses its completion state.
+The rings show where you are, not what you've finished.
+At program completion, the next-up marker disappears and every segment is grey.
 
 Each workout shows its total time and a preview of the run/walk sequence before you start.
 Read the activities left to right, then top to bottom; matching sequences show how many rounds to repeat.
@@ -98,8 +96,7 @@ W1 D1 is eight rounds of a one-minute run and a ninety-second walk, with a five-
 ![W1 D1 showing eight rounds of running and walking, with warm-up, cool-down, and total duration](images/workout-summary.png)
 
 During a workout, the ring has one arc per interval, sized by its share of the session.
-Passed intervals are periwinkle; the current one fills as it counts down.
-The Complete screen shows which intervals finished; skipped ones stay grey.
+Only the current one is highlighted, filling as it counts down.
 Blue and Yellow still work while paused, and leave the timer paused.
 
 ![Paused countdown on the StopWatch](images/paused.png)
@@ -115,15 +112,13 @@ The program starts with one-minute runs and reaches a thirty-minute run in week 
 The complete interval table is in the [design spec](SPEC.md).
 
 A completed session saves its workout, date, active duration, and time spent running.
-Skipping forward marks it partial with `~`, including skipping past the final segment.
+Skipping forward flags it partial in the log, including skipping past the final segment; the screens don't show that flag.
 Going back adds the time you replay without marking the session partial.
 Cancellation saves nothing.
 
 Every completion moves the cursor to the workout after the one just finished.
 Repeat W2 D1 while the cursor is on week five, and your next-up workout becomes W2 D2.
 W9 D3 stays at the end and shows Program complete.
-
-![Home showing one full completion and one partial completion of W1 D1](images/history-counts.png)
 
 History keeps the newest 256 sessions, including repeats.
 Hold both on Home for Settings: Sound, Vibration, Set Time, Reset Progress, and About.

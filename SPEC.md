@@ -1,6 +1,6 @@
 # E25K (ESP to 5K) for M5Stack StopWatch — Design Spec
 
-Version 1.5 · 2026-10-16
+Version 1.6 · 2026-10-17
 
 This is the project's source of truth for product behavior, the workout program, and saved data.
 Change this document alongside any agreed behavior or storage change, then keep the firmware, tests, and guides consistent with it.
@@ -108,13 +108,12 @@ History is reached by paging past the last workout on Home (see §4.1), and Esca
   - An activity summary before starting: RUN/WALK durations in their exact order, read left to right and then top to bottom.
   - A round count when the complete core is an exact repeated sequence; show the shortest exact sequence once. Otherwise show every interval. A single run is labeled `CONTINUOUS RUN`.
   - Warm-up and cool-down durations separately, below the core sequence.
-  - Full and partial completion counts for this workout and the date of the newest saved session (blank if never run). Partial counts use `~`. Counts cover the retained log, not lifetime totals.
   - `BOTH TO START` (periwinkle hint).
 - The activity summary is derived from the same segment table as the timer; it must reconstruct every core segment exactly. Do not maintain separate handwritten workout descriptions.
 - Example: W1 D1 shows `8 ROUNDS`, `RUN 1:00 → WALK 1:30`, `5:00 WARM UP + 5:00 COOL DOWN`, and `30:00 TOTAL`. RUN tokens are periwinkle, WALK tokens off-white. W4 shows all seven core intervals without shortening a partial repeat.
 - The outer **program ring** has 27 equal segments, W1 D1 just clockwise of 12 o'clock through W9 D3 just before it; the wider gap at 12 o'clock stands for the History page.
-- The **cursor** (next-up workout) is marked with a small periwinkle triangle under its page label and a dim-blue ring segment. A small off-white dot just inside the ring marks the page being viewed (at 12 o'clock on History); browsing never changes which workout is next or makes it look completed.
-- A workout segment is periwinkle if the retained log includes at least one non-partial completion. Partial-only workouts stay dark grey. The next-up color takes precedence when repeating a previously completed workout.
+- The **cursor** (next-up workout) is marked with a small periwinkle triangle under its page label and a dim-blue ring segment. A small off-white dot just inside the ring marks the page being viewed (at 12 o'clock on History); browsing never changes which workout is next.
+- Every other workout segment is dark grey. Home does not show which workouts were finished, how often, or when.
 - On boot, Home opens on the cursor page.
 - **Enter** → start whatever workout is on the current page.
 - **Escape** → Settings.
@@ -123,11 +122,11 @@ History is reached by paging past the last workout on Home (see §4.1), and Esca
 
 Layout, top to bottom, all centered:
 
-- True black background with an outer ring of one arc segment per interval (warm-up, each run, each walk, cool-down). Each arc's length is proportional to its planned share of the whole workout; gaps between arcs are a constant 4°. The ring shows position in the planned sequence: it moves back on replay and forward on skip; actual elapsed time is accounted separately (§10). Passed segments are periwinkle (`#6B7CFF`); the current segment is a dim-blue (`#3A4594`) track that fills clockwise with periwinkle as it elapses; remaining segments are dark grey (`#2A2B30`).
+- True black background with an outer ring of one arc segment per interval (warm-up, each run, each walk, cool-down). Each arc's length is proportional to its planned share of the whole workout; gaps between arcs are a constant 4°. The ring shows position in the planned sequence: it moves back on replay and forward on skip; actual elapsed time is accounted separately (§10). Only the current segment is highlighted: a dim-blue (`#3A4594`) track that fills clockwise with periwinkle (`#6B7CFF`) as it elapses. Every other segment, before or after it, is dark grey (`#2A2B30`).
 - Small letter-spaced segment label at top center in muted grey: `WARM UP` / `RUN` / `WALK` / `COOL DOWN`.
 - Segment countdown, largest text on screen, in off-white (`#F2EFE6`): `M:SS`, with a faint halo made of four dim copies offset 2 px behind it (no blur).
 - Below: `W3 · D2` in small muted text. No segment counter, elapsed time, or segment dots on this screen.
-- Segment completion (countdown reaching the end vs. skipping) is still tracked and logged; the run screen shows position, and Complete shows completion (§4.4).
+- Segment completion (countdown reaching the end vs. skipping) is still tracked in RAM and the partial flag is logged (§7), but no screen displays it.
 
 Controls:
 
@@ -156,8 +155,8 @@ Overlay on the workout screen (workout keeps timing underneath until confirmed �
 
 Reached automatically when the final segment's countdown hits zero, or by pressing Next on the final segment.
 
-- Shows a periwinkle check, `DONE` (or `DONE ~` if partial), `W3 · D2`, total time, run-time total.
-- The outer ring repeats the workout's proportional interval ring (§4.2): segments whose countdown finished are periwinkle; skipped ones stay dark grey.
+- Shows a periwinkle check, `DONE`, `W3 · D2`, total time, run-time total. Partial sessions look the same as full ones.
+- No outer ring: it would only restate which intervals were finished or skipped.
 - The log save is attempted here (§7). A failed save shows `LOG COULD NOT BE SAVED`; reaching Complete alone does not prove persistence succeeded.
 - Cursor advances here (§6).
 - Enter or Escape → Home (opens on the new cursor page).
@@ -166,7 +165,7 @@ Reached automatically when the final segment's countdown hits zero, or by pressi
 ### 4.5 History
 
 - Filmstrip, one log entry per page, newest first.
-- Page shows: workout label, date + time (from RTC), total duration, run-time total, `PARTIAL` badge if flagged.
+- Page shows: workout label, date + time (from RTC), total duration, run-time total. The partial flag is stored but not shown.
 - Blue/Yellow page; wraps.
 - Long histories use a moving window of page segments and an explicit entry number (`3 OF 12`) rather than squeezing 256 marks onto the arc.
 - Empty state: `No runs yet`.
@@ -199,17 +198,15 @@ Filmstrip, one setting per page:
 
 | Appearance | Meaning |
 |---|---|
-| Periwinkle segment | Complete (Home, Complete) or passed (run screen) |
-| Dim-blue segment | Current segment (filling with periwinkle) or next-up workout |
-| Dark grey segment | Incomplete or remaining |
+| Dim-blue segment | Current interval (filling with periwinkle) or next-up workout |
+| Dark grey segment | Any other interval or workout |
 
-Keep completion separate from position: a skipped segment or partial-only workout does not become complete just because the cursor moved past it.
-The next-up color wins when a workout is both next up and already completed, including replay.
-When Home shows `PROGRAM COMPLETE`, hide the next-up color and triangle; W9 D3 uses its completion state, so a finished program can show all 27 workout segments periwinkle.
-Home's separate viewed-page dot identifies browsing without changing those meanings.
-History, Settings, and Set Time show short page segments around 6 o'clock: periwinkle for the current page, dark grey for the others, first page at the left. They do not show exercise completion.
+Rings show position, never completion. Finished, skipped, partial, and untouched workouts or intervals look the same.
+When Home shows `PROGRAM COMPLETE`, there is no next-up segment or triangle; all 27 workout segments are dark grey.
+Home's separate viewed-page dot identifies browsing.
+History, Settings, and Set Time show short page segments around 6 o'clock: periwinkle for the current page, dark grey for the others, first page at the left.
 
-Workout completion is derived from retained logs and survives reboot with those logs.
+Workout and segment completion are still recorded (§7, §10) for the cursor and log; the UI does not visualize them.
 Segment completion is a per-session RAM bitmask, cleared on start or cancellation; it does not change the saved-data format.
 
 ## 5. Workout program
@@ -347,7 +344,7 @@ New segment/state cues replace an unfinished cue; acknowledgement taps do not in
 - Center layouts within the actual 468×468 drawing surface and circular aperture. Keep important content at least about 20 px from the circle edge; only progress rings approach the rim. The inscribed square is a guide, not an absolute text boundary.
 - Page changes are immediate. Horizontal slide animation is omitted to preserve time for button polling.
 - Countdown numerals use a **122 px** glyph line with tabular advances, rendered from a 4-bit Roboto Condensed font. Supporting text uses LVGL's 4-bit Montserrat fonts at 14, 18, 24, 32, 40, and 48 px. Text, circles, and arcs must use anti-aliasing. Daylight readability remains an in-hand acceptance check.
-- Confirm readable Home previews for a repeated pair, a repeated four-interval sequence, the seven-interval W4 workout, a continuous 30-minute run, and saved completion metadata.
+- Confirm readable Home previews for a repeated pair, a repeated four-interval sequence, the seven-interval W4 workout, and a continuous 30-minute run.
 
 ### 9.1 LVGL rendering
 
@@ -410,7 +407,7 @@ Arduino `Preferences` supplies NVS access.
 - **Controls and timing:** chord boundaries, held-gesture exclusivity, pause, replay, skip/partial flags, segment completion masks, delayed boundaries, and `millis()` rollover pass the portable checks.
 - **Storage:** repeat history, ring overwrite, corrupt-record rejection, cursor rules, and reset failure preserving RAM pass the portable checks.
 - **On device:** save a completion and verify it after restart; confirm reset leaves history empty after an immediate restart with no intervening write; retain feedback preferences. Use isolated test data when production history exists.
-- **Visuals:** inspect representative round-screen captures, including long interval previews, paused timer, reset confirmation/result, and retained history counts. Confirm periwinkle/dim-blue/grey ring segments during completion, skip, replay, pause, and Home browsing away from the next-up workout.
+- **Visuals:** inspect representative round-screen captures, including long interval previews, paused timer, reset confirmation/result, and History pages. Confirm only the current interval or next-up workout is highlighted during skip, replay, pause, completion, and Home browsing away from the next-up workout, with no completion coloring anywhere.
 - **LVGL:** verify anti-aliased text/ring captures, long summary and timer bounds, all screen flows, stable memory through repeated page changes, no repeated idle redraws, and timing while rendering.
 - Run [scripts/test.sh](scripts/test.sh) for the portable checks. [BUILD.md](BUILD.md) records device procedures and observed results; §14 keeps the unverified items visible.
 
@@ -436,6 +433,7 @@ Remaining acceptance checks:
 - Daylight readability, full-workout battery runtime, and full-session timing drift. The recorded 125-second check is not a substitute for these.
 - RTC calendar correctness and retention across a real power-off.
 - v1.5 UI on hardware (built, not flashed): proportional ring gaps/contrast on 18-interval workouts, countdown halo visibility and per-second redraw time, Home program-ring and viewed-dot legibility, page segments, Set Time numeral fit, letter-spaced label widths near the rim, LVGL free memory after repeated Home page cycles, and the updated `check-lvgl.py` ring-edge crop.
+- v1.6 UI on hardware (built, not flashed): neutral Home ring with only the next-up highlight, neutral run ring around the current interval, ringless Complete screen, and Home spacing without completion counts.
 
 Known limits and possible later work:
 
@@ -453,3 +451,4 @@ Known limits and possible later work:
 | 1.3 | 2026-09-20 | Migrate the UI to LVGL 9.3 with anti-aliased text and circles, a tabular countdown font, retained widgets, and partial redraws; preserve controls and storage schema |
 | 1.4 | 2026-09-21 | Simplify the run screen to a near-black face with a 12-segment session ring, small label, countdown, and week/day; remove segment counter, elapsed time, inner ring, and segment dots; no control or storage changes |
 | 1.5 | 2026-10-16 | Extend the simplified palette to every screen on true black; proportional per-interval run ring with in-segment fill; 27-segment Home program ring and segmented page indicators replace circles; countdown halo; no control, timing, feedback, or storage changes |
+| 1.6 | 2026-10-17 | Drop completion-tracking visuals: neutral Home and run rings (only next-up/current highlighted), no Complete ring, no Home completion/partial counts or last-run date, no `DONE ~` or History `PARTIAL` badge; storage, partial flag, cursor, and session logic unchanged |

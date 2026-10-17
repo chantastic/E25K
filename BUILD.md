@@ -27,10 +27,9 @@ Enter starts whichever workout is visible.
 A separate small dot inside the ring marks the viewed page without moving the next-up marker.
 On the History landing page, Enter opens the saved sessions, newest first.
 
-Ring segments use one legend: periwinkle means complete (or passed during a workout), dim blue means current or next up, and dark grey means incomplete.
-A workout turns periwinkle when the retained log contains a non-partial completion; partial-only workouts stay grey.
-The next-up color takes precedence when revisiting completed work.
-When the program is complete, there is no next-up segment or triangle; the final workout uses its completion state.
+Ring segments show position only: dim blue means current interval or next-up workout, and dark grey means everything else.
+No screen colors or counts finished workouts or intervals.
+When the program is complete, there is no next-up segment or triangle.
 
 Each workout previews its total duration, run/walk times in order, and warm-up and cool-down.
 Read the activities left to right, then top to bottom.
@@ -42,7 +41,7 @@ Yellow restarts the current segment; another Yellow within two seconds moves bac
 Further Yellow clicks within that interval continue backwards.
 Navigation works while paused and leaves the workout paused.
 The workout ring shows position: one arc per interval, proportional to its duration, with the current arc filling as it elapses.
-Segment completion still counts only finished countdowns; the Complete screen's ring leaves skipped segments grey.
+Segment completion is still tracked in RAM, but no screen shows it; the Complete screen has no ring.
 
 Hold both to show Cancel workout, then release and hold both again to discard it.
 The timer keeps running under that overlay unless already paused.
@@ -50,7 +49,7 @@ Any click dismisses it; it also disappears after five seconds.
 Cancellation saves nothing and leaves the next-up workout unchanged.
 
 Natural completion and skipping past the last segment both save a session.
-Partial sessions carry `~`.
+Partial sessions are flagged in the log but look like any other session on screen.
 Completion advances the next-up workout relative to the workout just completed, so repeating an earlier day can move it backwards.
 W9 D3 stays at the end and shows Program complete.
 
@@ -128,9 +127,8 @@ The checksum and bounds checks reject damaged or unsupported data without silent
 Reset Progress explicitly permits replacing that C25K state.
 It adopts the cleared progress in memory only after the save and readback succeed; failure preserves the current in-memory progress for retry.
 
-Workout completion circles are derived from retained non-partial log entries and survive reboot with that history.
-Segment completion uses a per-session RAM bitmask, cleared on start or cancellation.
-The circle update leaves storage schema 1 and the 2,578-byte record unchanged.
+Segment completion uses a per-session RAM bitmask, cleared on start or cancellation; the UI does not display it.
+Dropping completion visuals leaves storage schema 1 and the 2,578-byte record unchanged.
 
 Log totals count active time spent in each segment, including replays, and exclude paused time.
 The outer arc follows the position in the planned workout, so it moves back when a segment is replayed.
